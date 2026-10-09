@@ -1,0 +1,13 @@
+[package]
+name = "el-cache"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "EndlessLi cache manager with LRU eviction (Phase 4)"
+
+[dependencies]
+el-core = { workspace = true }
+serde = { workspace = true }
+
+[lints]
+workspace = true

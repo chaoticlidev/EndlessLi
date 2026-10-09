@@ -1,0 +1,37 @@
+[package]
+name = "endlessli"
+version.workspace = true
+description = "EndlessLi desktop app shell (Tauri 2)"
+authors = ["EndlessLi Contributors"]
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "endlessli_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+rusqlite = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+tokio = { workspace = true }
+el-core = { workspace = true }
+el-analytics = { workspace = true, optional = true }
+
+[features]
+default = []
+# DuckDB analytical engine, enabled at Phase 6 per ADR-002.
+analytics = ["el-analytics/duckdb"]
+
+[lints]
+workspace = true

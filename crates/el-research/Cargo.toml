@@ -1,0 +1,13 @@
+[package]
+name = "el-research"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "EndlessLi research orchestration over the Python sidecar (Phase 5)"
+
+[dependencies]
+el-core = { workspace = true }
+serde = { workspace = true }
+
+[lints]
+workspace = true

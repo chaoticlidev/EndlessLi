@@ -1,0 +1,13 @@
+[package]
+name = "el-linking"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "EndlessLi auto-linking orchestration (Phase 6)"
+
+[dependencies]
+el-core = { workspace = true }
+serde = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,23 @@
+[package]
+name = "el-analytics"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "EndlessLi DuckDB analytical engine, feature-flagged until Phase 6 (ADR-002)"
+
+[dependencies]
+el-core = { workspace = true }
+serde = { workspace = true }
+
+# Enabled with `--features analytics` at the workspace root / src-tauri.
+# Kept optional so early builds stay fast and small (implementation plan Phase 6).
+[dependencies.duckdb]
+version = "1"
+optional = true
+
+[features]
+default = []
+duckdb = ["dep:duckdb"]
+
+[lints]
+workspace = true

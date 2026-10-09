@@ -1,0 +1,13 @@
+[package]
+name = "el-llm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "EndlessLi LLM client, token counting, and budgets (Phase 3)"
+
+[dependencies]
+el-core = { workspace = true }
+serde = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,13 @@
+[package]
+name = "el-memory"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "EndlessLi user-controlled memory manager (Phase 8)"
+
+[dependencies]
+el-core = { workspace = true }
+serde = { workspace = true }
+
+[lints]
+workspace = true
