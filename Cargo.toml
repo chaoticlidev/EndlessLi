@@ -13,7 +13,13 @@ serde_json = "1"
 thiserror = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.40", features = ["bundled"] }
+rusqlite_migration = "2.6.0"
+r2d2 = "0.8"
+# Pinned exact: sqlite-vec is pre-1.0 and its SQL surface may change (ADR-014).
+# 0.1.10-alpha.4 is skipped: its crates.io package is missing a C source file.
+sqlite-vec = "=0.1.9"
+sha2 = "0.10"
 uuid = { version = "1", features = ["v7", "serde"] }
 chrono = "0.4"
 tokio = { version = "1", features = ["full"] }
@@ -31,7 +37,9 @@ el-skills = { path = "crates/el-skills" }
 el-security = { path = "crates/el-security" }
 
 [workspace.lints.rust]
-unsafe_code = "forbid"
+# Denied (not forbidden) so el-db can allow the single sqlite-vec FFI
+# registration call with a documented SAFETY comment.
+unsafe_code = "deny"
 
 [profile.release]
 codegen-units = 1

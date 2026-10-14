@@ -1,13 +1,17 @@
-//! `el-db`: SQLite source of truth (Phase 1).
+//! `el-db`: SQLite source of truth.
 //!
-//! Why this crate exists: all user data lives in one WAL-mode SQLite file.
-//! This crate will own the connection pool, the `refinery`/`rusqlite_migration`
-//! migration chain from Section 5 of the implementation plan, and one
-//! repository module per entity. Nothing here depends on Tauri directly so
-//! repositories stay unit-testable against an in-memory database.
+//! Owns the connection pool (WAL mode, foreign keys), the ordered migration
+//! chain, one repository module per entity group, and the `sqlite-vec`
+//! vector layer. Nothing here depends on Tauri, so repositories stay
+//! testable against throwaway databases.
 
-// Placeholder re-export so downstream crates can depend on `el-db` from Phase 0.
+pub mod migrate;
+pub mod pool;
+pub mod repo;
+pub mod vec;
+
 pub use el_core::{AppError, AppResult};
+pub use pool::{Database, DbConn};
 
-/// Database schema version this crate will migrate to. Phase 1 sets it to 1.
-pub const TARGET_SCHEMA_VERSION: u32 = 0;
+/// Database schema version this crate migrates to.
+pub const TARGET_SCHEMA_VERSION: u32 = migrate::TARGET_SCHEMA_VERSION;

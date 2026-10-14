@@ -6,6 +6,18 @@
 
 use serde::Serialize;
 
+pub mod domain;
+
+pub use domain::{
+    CacheEntry, CacheStats, Folder, LibraryItem, MemoryEntry, MemorySuggestion, NewFolder,
+    NewLibraryItem, NewMemoryEntry, NewNote, NewProject, NewResult, NewScript, NewSession,
+    NewSkill, NewStep, Note, NoteLink, Project, ResearchResult, ResearchSession, ResearchStep,
+    Script, Setting, SimilarNote, Skill, Tag, TokenUsage, UpdateLibraryItem, UpdateNote,
+    CACHE_TYPE_VALUES, LIBRARY_TYPE_VALUES, LINK_ORIGIN_VALUES, MEMORY_SOURCE_VALUES,
+    MEMORY_TYPE_VALUES, NOTE_AUTHOR_VALUES, RESEARCH_MODE_VALUES, RESEARCH_STATUS_VALUES,
+    RESULT_TYPE_VALUES, STEP_STATUS_VALUES,
+};
+
 /// Serializable application error returned from every Tauri command.
 ///
 /// Each variant maps to a stable `kind` string so the TypeScript layer
@@ -37,7 +49,7 @@ pub enum AppError {
 pub type AppResult<T> = Result<T, AppError>;
 
 /// Current schema version. Bumped by migrations in `el-db` (Phase 1).
-pub const SCHEMA_VERSION: u32 = 0;
+pub const SCHEMA_VERSION: u32 = 1;
 
 #[cfg(test)]
 mod tests {
