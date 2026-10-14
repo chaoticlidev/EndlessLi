@@ -1,6 +1,6 @@
 //! Project repository: the top-level organizer every note belongs to.
 
-use el_core::{AppError, AppResult, NewProject, Project};
+use el_core::{AppError, AppResult, NewProject, Project, UpdateProject};
 use rusqlite::{Connection, Row};
 
 use super::{bool_param, check_not_blank, get_bool, map_db, new_id, now_ts};
@@ -87,30 +87,22 @@ pub fn list(conn: &Connection, include_archived: bool) -> AppResult<Vec<Project>
 }
 
 /// Updates the mutable project fields.
-pub fn update(
-    conn: &Connection,
-    id: &str,
-    name: Option<&str>,
-    description: Option<Option<&str>>,
-    icon: Option<Option<&str>>,
-    color: Option<Option<&str>>,
-    system_prompt: Option<Option<&str>>,
-) -> AppResult<Project> {
+pub fn update(conn: &Connection, id: &str, patch: &UpdateProject) -> AppResult<Project> {
     let mut project = require(conn, id)?;
-    if let Some(name) = name {
+    if let Some(name) = &patch.name {
         project.name = check_not_blank(name, "project name")?;
     }
-    if let Some(description) = description {
-        project.description = description.map(str::to_string);
+    if let Some(description) = &patch.description {
+        project.description = Some(description.clone());
     }
-    if let Some(icon) = icon {
-        project.icon = icon.map(str::to_string);
+    if let Some(icon) = &patch.icon {
+        project.icon = Some(icon.clone());
     }
-    if let Some(color) = color {
-        project.color = color.map(str::to_string);
+    if let Some(color) = &patch.color {
+        project.color = Some(color.clone());
     }
-    if let Some(system_prompt) = system_prompt {
-        project.system_prompt = system_prompt.map(str::to_string);
+    if let Some(system_prompt) = &patch.system_prompt {
+        project.system_prompt = Some(system_prompt.clone());
     }
     let affected = conn
         .execute(

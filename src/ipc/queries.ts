@@ -1,0 +1,308 @@
+import {
+  QueryClient,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import { commands } from "./bindings";
+import type { AppError, NewNote, NoteScope } from "./bindings";
+
+export const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: { retry: 1, staleTime: 5_000 },
+  },
+});
+
+export type IpcError = AppError | Error;
+
+function unwrap<T>(
+  result: { status: "ok"; data: T } | { status: "error"; error: AppError },
+): T {
+  if (result.status === "ok") return result.data;
+  throw result.error;
+}
+
+async function call<T>(
+  fn: () => Promise<
+    { status: "ok"; data: T } | { status: "error"; error: AppError }
+  >,
+): Promise<T> {
+  return unwrap(await fn());
+}
+
+export function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  const err = error as AppError;
+  return err.message ?? "Unknown error";
+}
+
+/** Scope key must be stable for React Query caching. */
+export function scopeKey(scope: NoteScope): string {
+  switch (scope.type) {
+    case "inbox":
+      return "inbox";
+    case "all":
+      return "all";
+    case "project":
+      return `project:${scope.project_id}`;
+    case "folder":
+      return `folder:${scope.folder_id}`;
+  }
+}
+
+export function useProjects(includeArchived = true) {
+  return useQuery({
+    queryKey: ["projects", includeArchived],
+    queryFn: () => call(() => commands.projectList(includeArchived)),
+  });
+}
+
+export function useFolderTree(projectId: string | null) {
+  return useQuery({
+    queryKey: ["folders", projectId],
+    queryFn: () => call(() => commands.folderTree(projectId ?? "")),
+    enabled: projectId !== null,
+  });
+}
+
+export function useNotes(scope: NoteScope) {
+  return useQuery({
+    queryKey: ["notes", scopeKey(scope)],
+    queryFn: () => call(() => commands.noteList(scope)),
+  });
+}
+
+export function useNoteDetail(id: string | null) {
+  return useQuery({
+    queryKey: ["note-detail", id],
+    queryFn: () => call(() => commands.noteDetail(id ?? "")),
+    enabled: id !== null,
+  });
+}
+
+export function useTags() {
+  return useQuery({
+    queryKey: ["tags"],
+    queryFn: () => call(() => commands.tagList()),
+  });
+}
+
+export function useNoteSearch(query: string, limit = 20) {
+  const trimmed = query.trim();
+  return useQuery({
+    queryKey: ["note-search", trimmed, limit],
+    queryFn: () => call(() => commands.noteSearch(trimmed, limit)),
+    enabled: trimmed.length > 0,
+  });
+}
+
+export function useTitleMatches(title: string, limit = 5) {
+  const trimmed = title.trim();
+  return useQuery({
+    queryKey: ["title-matches", trimmed, limit],
+    queryFn: () => call(() => commands.noteFindByTitle(trimmed, limit)),
+    enabled: trimmed.length > 0,
+  });
+}
+
+function invalidateKnowledge(queryClient: QueryClient) {
+  void queryClient.invalidateQueries({ queryKey: ["projects"] });
+  void queryClient.invalidateQueries({ queryKey: ["folders"] });
+  void queryClient.invalidateQueries({ queryKey: ["notes"] });
+  void queryClient.invalidateQueries({ queryKey: ["tags"] });
+  void queryClient.invalidateQueries({ queryKey: ["note-detail"] });
+  void queryClient.invalidateQueries({ queryKey: ["note-search"] });
+}
+
+export function useCreateNote() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: NewNote) => call(() => commands.noteCreate(input)),
+    onSuccess: () => invalidateKnowledge(client),
+  });
+}
+
+export function useUpdateNote() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { id: string; title?: string; content?: string }) =>
+      call(() =>
+        commands.noteUpdate(args.id, {
+          title: args.title ?? null,
+          content: args.content ?? null,
+        }),
+      ),
+    onSuccess: (_data, args) => {
+      void client.invalidateQueries({ queryKey: ["notes"] });
+      void client.invalidateQueries({ queryKey: ["note-detail", args.id] });
+      void client.invalidateQueries({ queryKey: ["note-search"] });
+    },
+  });
+}
+
+export function useMoveNote() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (args: {
+      id: string;
+      projectId: string | null;
+      folderId: string | null;
+    }) => call(() => commands.noteMove(args.id, args.projectId, args.folderId)),
+    onSuccess: () => invalidateKnowledge(client),
+  });
+}
+
+export function useDeleteNote() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => call(() => commands.noteDelete(id)),
+    onSuccess: () => invalidateKnowledge(client),
+  });
+}
+
+export function useBranchNote() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { id: string; title?: string }) =>
+      call(() => commands.noteBranch(args.id, args.title ?? null)),
+    onSuccess: () => invalidateKnowledge(client),
+  });
+}
+
+export function useCreateProject() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) =>
+      call(() =>
+        commands.projectCreate({
+          name,
+          description: null,
+          icon: null,
+          color: null,
+          system_prompt: null,
+        }),
+      ),
+    onSuccess: () => invalidateKnowledge(client),
+  });
+}
+
+export function useArchiveProject() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { id: string; archived: boolean }) =>
+      call(() => commands.projectArchive(args.id, args.archived)),
+    onSuccess: () => invalidateKnowledge(client),
+  });
+}
+
+export function useDeleteProject() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => call(() => commands.projectDelete(id)),
+    onSuccess: () => invalidateKnowledge(client),
+  });
+}
+
+export function useCreateFolder() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (args: {
+      name: string;
+      projectId: string;
+      parentId: string | null;
+    }) =>
+      call(() =>
+        commands.folderCreate({
+          name: args.name,
+          project_id: args.projectId,
+          parent_id: args.parentId,
+        }),
+      ),
+    onSuccess: () => invalidateKnowledge(client),
+  });
+}
+
+export function useRenameFolder() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { id: string; name: string }) =>
+      call(() => commands.folderRename(args.id, args.name)),
+    onSuccess: () => invalidateKnowledge(client),
+  });
+}
+
+export function useDeleteFolder() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => call(() => commands.folderDelete(id)),
+    onSuccess: () => invalidateKnowledge(client),
+  });
+}
+
+export function useCreateTag() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) => call(() => commands.tagCreate(name, null)),
+    onSuccess: () => invalidateKnowledge(client),
+  });
+}
+
+export function useAssignTag() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { noteId: string; tagId: string }) =>
+      call(() => commands.tagAssign(args.noteId, args.tagId)),
+    onSuccess: (_data, args) => {
+      void client.invalidateQueries({ queryKey: ["tags"] });
+      void client.invalidateQueries({ queryKey: ["note-detail", args.noteId] });
+      void client.invalidateQueries({ queryKey: ["notes"] });
+    },
+  });
+}
+
+export function useUnassignTag() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { noteId: string; tagId: string }) =>
+      call(() => commands.tagUnassign(args.noteId, args.tagId)),
+    onSuccess: (_data, args) => {
+      void client.invalidateQueries({ queryKey: ["tags"] });
+      void client.invalidateQueries({ queryKey: ["note-detail", args.noteId] });
+      void client.invalidateQueries({ queryKey: ["notes"] });
+    },
+  });
+}
+
+export function useDeleteTag() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => call(() => commands.tagDelete(id)),
+    onSuccess: () => invalidateKnowledge(client),
+  });
+}
+
+export function useCreateLink() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { a: string; b: string }) =>
+      call(() => commands.linkCreateManual(args.a, args.b)),
+    onSuccess: (_data, args) => {
+      void client.invalidateQueries({ queryKey: ["note-detail", args.a] });
+      void client.invalidateQueries({ queryKey: ["note-detail", args.b] });
+      void client.invalidateQueries({ queryKey: ["notes"] });
+    },
+  });
+}
+
+export function useRemoveLink() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { a: string; b: string }) =>
+      call(() => commands.linkRemove(args.a, args.b)),
+    onSuccess: (_data, args) => {
+      void client.invalidateQueries({ queryKey: ["note-detail", args.a] });
+      void client.invalidateQueries({ queryKey: ["note-detail", args.b] });
+      void client.invalidateQueries({ queryKey: ["notes"] });
+    },
+  });
+}

@@ -8,6 +8,8 @@ description = "EndlessLi domain types, errors, and traits"
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
+specta = { workspace = true }
+specta-typescript = { workspace = true }
 thiserror = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }

@@ -97,13 +97,14 @@ fn note_update_and_branch() {
         &UpdateNote {
             title: Some("renamed".to_string()),
             content: None,
-            project_id: None,
-            folder_id: None,
         },
     )
     .unwrap();
     assert_eq!(updated.title, "renamed");
     assert_eq!(updated.content, original.content);
+
+    let moved = notes::move_note(&conn, &original.id, None, None).unwrap();
+    assert!(moved.project_id.is_none());
 
     let branched = notes::branch(&mut write, &original.id, None).unwrap();
     drop(write);

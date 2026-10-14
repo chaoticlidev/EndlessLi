@@ -128,22 +128,22 @@ pub fn update(conn: &Connection, id: &str, patch: &UpdateLibraryItem) -> AppResu
         item.title = check_not_blank(title, "item title")?;
     }
     if let Some(authors) = &patch.authors {
-        item.authors = authors.clone();
+        item.authors = Some(authors.clone());
     }
     if let Some(url) = &patch.url {
-        item.url = url.clone();
+        item.url = Some(url.clone());
     }
     if let Some(source) = &patch.source {
-        item.source = source.clone();
+        item.source = Some(source.clone());
     }
     if let Some(content) = &patch.content {
-        item.content = content.clone();
+        item.content = Some(content.clone());
     }
     if let Some(file_path) = &patch.file_path {
-        item.file_path = file_path.clone();
+        item.file_path = Some(file_path.clone());
     }
     if let Some(note_id) = &patch.note_id {
-        item.note_id = note_id.clone();
+        item.note_id = Some(note_id.clone());
     }
     let affected = conn
         .execute(

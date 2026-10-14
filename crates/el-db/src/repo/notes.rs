@@ -126,6 +126,39 @@ pub fn list_by_folder(conn: &Connection, folder_id: &str) -> AppResult<Vec<Note>
     collect_notes(&mut stmt, &[&folder_id])
 }
 
+/// Lists every note, newest-first. Used for global views and exports.
+pub fn list_all(conn: &Connection) -> AppResult<Vec<Note>> {
+    let mut stmt = conn
+        .prepare(&format!(
+            "SELECT {COLUMNS} FROM notes ORDER BY updated_at DESC"
+        ))
+        .map_err(map_db)?;
+    collect_notes(&mut stmt, &[])
+}
+
+/// Finds notes by title for `[[wikilink]]` resolution: exact matches
+/// (case-insensitive) first, then prefix matches, capped at `limit`.
+pub fn find_by_title(conn: &Connection, title: &str, limit: usize) -> AppResult<Vec<Note>> {
+    let trimmed = title.trim();
+    if trimmed.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut stmt = conn
+        .prepare(&format!(
+            "SELECT {COLUMNS} FROM notes WHERE title = ?1 COLLATE NOCASE
+             UNION ALL
+             SELECT {COLUMNS} FROM notes WHERE title LIKE ?2 ESCAPE '\\'
+             AND title != ?1 COLLATE NOCASE
+             LIMIT ?3"
+        ))
+        .map_err(map_db)?;
+    let prefix = format!("{}%", trimmed.replace(['%', '_', '\\'], ""));
+    collect_notes(
+        &mut stmt,
+        &[&trimmed as &dyn rusqlite::ToSql, &prefix, &(limit as i64)],
+    )
+}
+
 /// Updates a note. When neither title nor content changed, the existing
 /// embedding reference is kept; otherwise it is cleared so the note is
 /// re-embedded on the next pass.
@@ -134,28 +167,20 @@ pub fn update(conn: &mut Connection, id: &str, patch: &UpdateNote) -> AppResult<
         .transaction()
         .map_err(|err| AppError::Database(err.to_string()))?;
     let mut note = require(&tx, id)?;
+    let mut embedding_stale = false;
     if let Some(title) = &patch.title {
         note.title = check_not_blank(title, "note title")?;
+        // Title feeds the FTS index and the embedding input; any title edit
+        // conservatively marks the embedding stale.
+        embedding_stale = true;
     }
-    let mut embedding_stale = false;
     if let Some(content) = &patch.content {
         if *content != note.content {
             note.content.clone_from(content);
             embedding_stale = true;
         }
     }
-    if let Some(project_id) = &patch.project_id {
-        note.project_id.clone_from(project_id);
-    }
-    if let Some(folder_id) = &patch.folder_id {
-        note.folder_id.clone_from(folder_id);
-    }
     note.updated_at = now_ts();
-    if patch.title.is_some() {
-        // Title feeds the FTS index and the embedding input; any title edit
-        // conservatively marks the embedding stale.
-        embedding_stale = true;
-    }
     if embedding_stale {
         note.embedding_model = None;
         note.embedding_hash = None;
@@ -181,6 +206,30 @@ pub fn update(conn: &mut Connection, id: &str, patch: &UpdateNote) -> AppResult<
     }
     tx.commit()
         .map_err(|err| AppError::Database(err.to_string()))?;
+    Ok(note)
+}
+
+/// Moves a note to a project and folder. `None` unplaces it (Inbox for
+/// projects, project root for folders). Unknown ids fail with `InvalidInput`.
+pub fn move_note(
+    conn: &Connection,
+    id: &str,
+    project_id: Option<&str>,
+    folder_id: Option<&str>,
+) -> AppResult<Note> {
+    let mut note = require(conn, id)?;
+    note.project_id = project_id.map(str::to_string);
+    note.folder_id = folder_id.map(str::to_string);
+    note.updated_at = now_ts();
+    let affected = conn
+        .execute(
+            "UPDATE notes SET project_id = ?1, folder_id = ?2, updated_at = ?3 WHERE id = ?4",
+            rusqlite::params![note.project_id, note.folder_id, note.updated_at, id],
+        )
+        .map_err(map_db)?;
+    if affected == 0 {
+        return Err(AppError::NotFound(format!("note {id}")));
+    }
     Ok(note)
 }
 

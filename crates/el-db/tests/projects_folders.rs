@@ -29,11 +29,11 @@ fn project_crud_and_archive() {
     let updated = projects::update(
         &conn,
         &created.id,
-        Some("Deep Research"),
-        Some(Some("desc")),
-        None,
-        None,
-        None,
+        &el_core::UpdateProject {
+            name: Some("Deep Research".to_string()),
+            description: Some("desc".to_string()),
+            ..Default::default()
+        },
     )
     .unwrap();
     assert_eq!(updated.name, "Deep Research");
