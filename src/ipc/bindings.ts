@@ -79,6 +79,23 @@ export const commands = {
 	linksForNote: (noteId: string) => typedError<NoteLink[], AppError>(__TAURI_INVOKE("links_for_note", { noteId })),
 	/**  Rejects a pair so it is never suggested again. */
 	linkReject: (a: string, b: string) => typedError<null, AppError>(__TAURI_INVOKE("link_reject", { a, b })),
+	/**  Reads one setting value (JSON), or `None` when unset. */
+	settingsGet: (key: string) => typedError<string | null, AppError>(__TAURI_INVOKE("settings_get", { key })),
+	/**  Writes one setting value (JSON), replacing any previous value. */
+	settingsUpdate: (key: string, value: string) => typedError<null, AppError>(__TAURI_INVOKE("settings_update", { key, value })),
+	/**  Stores (or replaces) a provider API key in the OS keychain. */
+	apiKeySet: (provider: string, key: string) => typedError<null, AppError>(__TAURI_INVOKE("api_key_set", { provider, key })),
+	/**  Removes a provider API key. Succeeds when none was stored. */
+	apiKeyDelete: (provider: string) => typedError<null, AppError>(__TAURI_INVOKE("api_key_delete", { provider })),
+	/**  Reports which providers have a key stored, without revealing keys. */
+	apiKeyStatus: () => typedError<ProviderKeyStatus[], AppError>(__TAURI_INVOKE("api_key_status")),
+	/**
+	 *  Runs a tiny self-test prompt end to end: budget check, one completion,
+	 *  sanitized output, logged usage. Proves the key, model, and budgets work.
+	 */
+	apiKeyTest: (provider: string, model: string | null) => typedError<TestOutcome, AppError>(__TAURI_INVOKE("api_key_test", { provider, model })),
+	/**  Summarizes token usage (rolling 24h / 30d) with limits and warnings. */
+	tokenUsageSummary: () => typedError<TokenSummary, AppError>(__TAURI_INVOKE("token_usage_summary")),
 };
 
 /* Types */
@@ -208,11 +225,37 @@ export type Project = {
 	created_at: number,
 };
 
+/**  Per-provider key presence for the Settings UI. */
+export type ProviderKeyStatus = {
+	provider: string,
+	configured: boolean,
+};
+
 /**  A case-insensitively unique label attachable to notes and library items. */
 export type Tag = {
 	id: string,
 	name: string,
 	color: string | null,
+};
+
+/**  Outcome of the Settings self-test prompt, returned through IPC. */
+export type TestOutcome = {
+	text: string,
+	tokens_in: number,
+	tokens_out: number,
+	estimated: boolean,
+	budget_warning: string | null,
+};
+
+/**  Usage totals with limits and the current warning state. */
+export type TokenSummary = {
+	day_in: number,
+	day_out: number,
+	month_in: number,
+	month_out: number,
+	daily_limit: number,
+	monthly_limit: number,
+	budget_warning: string | null,
 };
 
 /**

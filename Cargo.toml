@@ -10,7 +10,7 @@ version = "0.3.0"
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-specta = "=2.0.0-rc.25"
+specta = { version = "=2.0.0-rc.25", features = ["derive"] }
 specta-typescript = "0.0.12"
 tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }
 thiserror = "2"
@@ -19,6 +19,10 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rusqlite = { version = "0.40", features = ["bundled"] }
 rusqlite_migration = "2.6.0"
 r2d2 = "0.8"
+keyring = "4"
+reqwest = { version = "0.13", features = ["json", "stream"] }
+tiktoken-rs = "0.12"
+ammonia = "4"
 # Pinned exact: sqlite-vec is pre-1.0 and its SQL surface may change (ADR-014).
 # 0.1.10-alpha.4 is skipped: its crates.io package is missing a C source file.
 sqlite-vec = "=0.1.9"
@@ -38,7 +42,6 @@ el-research = { path = "crates/el-research" }
 el-compress = { path = "crates/el-compress" }
 el-skills = { path = "crates/el-skills" }
 el-security = { path = "crates/el-security" }
-
 [workspace.lints.rust]
 # Denied (not forbidden) so el-db can allow the single sqlite-vec FFI
 # registration call with a documented SAFETY comment.

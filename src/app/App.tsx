@@ -5,6 +5,7 @@ import { queryClient } from "../ipc/queries";
 import { PillNav } from "./PillNav";
 import { CommandPalette } from "./CommandPalette";
 import { KnowledgeBaseView } from "./KnowledgeBaseView";
+import { SettingsView } from "../features/settings/SettingsView";
 import { ComingSoon } from "./ComingSoon";
 
 function useGlobalShortcuts() {
@@ -63,12 +64,7 @@ function ActiveTab() {
         />
       );
     case "settings":
-      return (
-        <ComingSoon
-          title="Settings"
-          text="Providers, budgets, cache, and appearance settings arrive in the next milestone."
-        />
-      );
+      return <SettingsView />;
   }
 }
 

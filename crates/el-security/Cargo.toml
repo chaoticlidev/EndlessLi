@@ -8,6 +8,8 @@ description = "EndlessLi keychain, sanitization, and encryption helpers (Phase 3
 [dependencies]
 el-core = { workspace = true }
 serde = { workspace = true }
+keyring = { workspace = true }
+ammonia = { workspace = true }
 
 [lints]
 workspace = true

@@ -7,7 +7,19 @@ description = "EndlessLi LLM client, token counting, and budgets (Phase 3)"
 
 [dependencies]
 el-core = { workspace = true }
+el-db = { workspace = true }
+el-security = { workspace = true }
+rusqlite = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
+specta = { workspace = true }
+specta-typescript = { workspace = true }
+reqwest = { workspace = true }
+tokio = { workspace = true }
+tiktoken-rs = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }
+futures-util = "0.3"
 
 [lints]
 workspace = true

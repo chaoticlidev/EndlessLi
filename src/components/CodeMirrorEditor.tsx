@@ -13,9 +13,12 @@ interface CodeMirrorEditorProps {
 /**
  * Minimal CodeMirror 6 Markdown editor. The parent owns the document: it
  * passes the opening text once and receives edits through `onChange`.
- * External resets (switching notes) are handled by remounting via `key`.
- * The editor is created exactly once per mount; later `initialDoc` values
- * are intentionally ignored so typing never rebuilds the view.
+ * Switching notes remounts via `key` from the parent.
+ *
+ * The editor is created exactly once per mount. The effect depends only on
+ * stable values on purpose: `initialDoc` changes on every keystroke (it is
+ * the live parent state), and re-running creation there would destroy and
+ * recreate the view — and with it the user's focus — on each keystroke.
  */
 export function CodeMirrorEditor({
   initialDoc,
@@ -23,21 +26,19 @@ export function CodeMirrorEditor({
   autofocus,
 }: CodeMirrorEditorProps) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const initialRef = useRef(initialDoc);
   const onChangeRef = useRef(onChange);
-  const mountedRef = useRef(false);
 
   useEffect(() => {
     onChangeRef.current = onChange;
   });
 
   useEffect(() => {
-    if (mountedRef.current) return undefined;
-    mountedRef.current = true;
     const host = hostRef.current;
     if (!host) return undefined;
 
     const state = EditorState.create({
-      doc: initialDoc,
+      doc: initialRef.current,
       extensions: [
         keymap.of(defaultKeymap),
         markdown(),
@@ -52,11 +53,10 @@ export function CodeMirrorEditor({
     const view = new EditorView({ state, parent: host });
     if (autofocus) view.focus();
 
-    return () => {
-      mountedRef.current = false;
-      view.destroy();
-    };
-  }, [autofocus, initialDoc]);
+    return () => view.destroy();
+    // Mount-once by design; see the doc comment above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return <div ref={hostRef} className="cm-host min-h-64 text-sm" />;
 }

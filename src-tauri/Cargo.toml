@@ -31,6 +31,8 @@ chrono = { workspace = true }
 tokio = { workspace = true }
 el-core = { workspace = true }
 el-db = { workspace = true }
+el-llm = { workspace = true }
+el-security = { workspace = true }
 el-analytics = { workspace = true, optional = true }
 
 [features]

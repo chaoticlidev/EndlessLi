@@ -294,6 +294,61 @@ export function useCreateLink() {
   });
 }
 
+export function useSetting(key: string) {
+  return useQuery({
+    queryKey: ["setting", key],
+    queryFn: () => call(() => commands.settingsGet(key)),
+  });
+}
+
+export function useSetSetting() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { key: string; value: string }) =>
+      call(() => commands.settingsUpdate(args.key, args.value)),
+    onSuccess: (_data, args) => {
+      void client.invalidateQueries({ queryKey: ["setting", args.key] });
+      void client.invalidateQueries({ queryKey: ["token-summary"] });
+    },
+  });
+}
+
+export function useKeyStatus() {
+  return useQuery({
+    queryKey: ["key-status"],
+    queryFn: () => call(() => commands.apiKeyStatus()),
+  });
+}
+
+export function useSetKey() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { provider: string; key: string }) =>
+      call(() => commands.apiKeySet(args.provider, args.key)),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["key-status"] });
+    },
+  });
+}
+
+export function useDeleteKey() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (provider: string) =>
+      call(() => commands.apiKeyDelete(provider)),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["key-status"] });
+    },
+  });
+}
+
+export function useTokenSummary() {
+  return useQuery({
+    queryKey: ["token-summary"],
+    queryFn: () => call(() => commands.tokenUsageSummary()),
+  });
+}
+
 export function useRemoveLink() {
   const client = useQueryClient();
   return useMutation({
