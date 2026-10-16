@@ -94,7 +94,7 @@ pub fn put(
         ],
     )
     .map_err(map_db)?;
-    evict_if_needed(conn)?;
+    evict_if_needed(conn, &id)?;
     Ok(CacheEntry {
         id,
         entry_type: entry_type.to_string(),
@@ -181,8 +181,11 @@ pub fn clear_by_type(conn: &Connection, entry_type: &str) -> AppResult<usize> {
     Ok(count)
 }
 
-/// Deletes LRU rows until usage drops to 90% of the ceiling.
-fn evict_if_needed(conn: &Connection) -> AppResult<()> {
+/// Deletes LRU rows until usage drops to 90% of the ceiling. The row that
+/// triggered the write is protected: when the working set exceeds the
+/// ceiling, the cache degrades to holding the latest write rather than
+/// churning itself empty.
+fn evict_if_needed(conn: &Connection, protect_id: &str) -> AppResult<()> {
     let max_bytes = match get_setting(conn, SETTING_CACHE_MAX_BYTES)? {
         Some(raw) => raw
             .parse::<i64>()
@@ -203,9 +206,10 @@ fn evict_if_needed(conn: &Connection) -> AppResult<()> {
         }
         let removed = conn
             .execute(
-                "DELETE FROM cache_entries WHERE id IN (
-                   SELECT id FROM cache_entries ORDER BY last_accessed_at ASC LIMIT 10)",
-                [],
+                "DELETE FROM cache_entries WHERE id != ?1 AND id IN (
+                   SELECT id FROM cache_entries WHERE id != ?1
+                   ORDER BY last_accessed_at ASC LIMIT 10)",
+                [protect_id],
             )
             .map_err(map_db)?;
         if removed == 0 {

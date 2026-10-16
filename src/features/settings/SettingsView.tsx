@@ -5,6 +5,8 @@ import { commands } from "../../ipc/bindings";
 import type { TestOutcome } from "../../ipc/bindings";
 import {
   errorMessage,
+  useCacheStats,
+  useClearCache,
   useDeleteKey,
   useKeyStatus,
   useSetKey,
@@ -318,6 +320,66 @@ function Budgets() {
   );
 }
 
+function CacheManager() {
+  const { data: stats } = useCacheStats();
+  const clearCache = useClearCache();
+  const [status, setStatus] = useState<string | null>(null);
+
+  const types = [
+    { id: "search", label: "Search results" },
+    { id: "webpage", label: "Clipped pages" },
+    { id: "llm_response", label: "Model responses" },
+    { id: "embedding", label: "Embeddings" },
+  ];
+
+  async function clear(entryType: string | null) {
+    setStatus(null);
+    try {
+      await clearCache.mutateAsync(entryType);
+      setStatus("Cleared");
+    } catch (err) {
+      setStatus(errorMessage(err));
+    }
+  }
+
+  function formatBytes(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  return (
+    <div className="flex flex-col gap-2 text-sm">
+      <p className="text-xs text-neutral-500">
+        {stats
+          ? `${stats.entries} entries · ${formatBytes(stats.bytes)}`
+          : "Loading usage…"}
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        <button
+          type="button"
+          onClick={() => void clear(null)}
+          className="rounded-md border border-neutral-300 px-2.5 py-1 text-xs dark:border-neutral-600"
+        >
+          Clear all
+        </button>
+        {types.map((type) => (
+          <button
+            key={type.id}
+            type="button"
+            title={`Clear ${type.label}`}
+            onClick={() => void clear(type.id)}
+            className="rounded-md border border-neutral-300 px-2.5 py-1 text-xs dark:border-neutral-600"
+          >
+            {type.label}
+          </button>
+        ))}
+      </div>
+      {status && <p className="text-xs text-neutral-500">{status}</p>}
+    </div>
+  );
+}
+
 /** Settings tab: providers, keys, models, embedding, cache, budgets. */
 export function SettingsView() {
   const { data: provider } = useSetting("llm.provider");
@@ -325,7 +387,7 @@ export function SettingsView() {
   const current = provider || "openai";
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-3 overflow-y-auto pb-4">
+    <div className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col gap-3 overflow-y-auto pb-4">
       <Section title="Language model">
         <label className="flex flex-col gap-1 text-sm">
           <span className="font-medium">Provider</span>
@@ -383,6 +445,7 @@ export function SettingsView() {
           hint="Least-recently-used entries are evicted past this size. Default 1073741824 (1 GB)."
           placeholder="1073741824"
         />
+        <CacheManager />
       </Section>
 
       <Section title="Token budgets">

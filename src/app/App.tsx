@@ -84,7 +84,7 @@ export function App() {
             Ctrl+K
           </span>
         </header>
-        <main className="min-h-0 flex-1">
+        <main className="flex min-h-0 flex-1 flex-col">
           <ActiveTab />
         </main>
         <CommandPalette key={paletteNonce} />

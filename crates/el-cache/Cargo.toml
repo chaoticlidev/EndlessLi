@@ -7,7 +7,9 @@ description = "EndlessLi cache manager with LRU eviction (Phase 4)"
 
 [dependencies]
 el-core = { workspace = true }
+el-db = { workspace = true }
 serde = { workspace = true }
+tokio = { workspace = true }
 
 [lints]
 workspace = true

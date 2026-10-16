@@ -349,6 +349,24 @@ export function useTokenSummary() {
   });
 }
 
+export function useCacheStats() {
+  return useQuery({
+    queryKey: ["cache-stats"],
+    queryFn: () => call(() => commands.cacheStats()),
+  });
+}
+
+export function useClearCache() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (entryType: string | null) =>
+      call(() => commands.cacheClear(entryType)),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["cache-stats"] });
+    },
+  });
+}
+
 export function useRemoveLink() {
   const client = useQueryClient();
   return useMutation({

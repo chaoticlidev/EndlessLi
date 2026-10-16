@@ -17,6 +17,25 @@
   -webkit-text-size-adjust: 100%;
 }
 
+/* The app frame is exactly one viewport tall; anything past it would expose
+   the raw webview background. Paint the page itself so a layout slip can
+   never show a white flash. */
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background-color: var(--color-neutral-100);
+}
+
+@media (prefers-color-scheme: dark) {
+  body {
+    background-color: var(--color-neutral-950);
+  }
+}
+
 /* CodeMirror host: fill its container with a readable editing surface. */
 .cm-host .cm-editor {
   height: 100%;

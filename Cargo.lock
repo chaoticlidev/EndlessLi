@@ -1408,7 +1408,9 @@ name = "el-cache"
 version = "0.3.0"
 dependencies = [
  "el-core",
+ "el-db",
  "serde",
+ "tokio",
 ]
 
 [[package]]

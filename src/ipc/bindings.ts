@@ -96,6 +96,10 @@ export const commands = {
 	apiKeyTest: (provider: string, model: string | null) => typedError<TestOutcome, AppError>(__TAURI_INVOKE("api_key_test", { provider, model })),
 	/**  Summarizes token usage (rolling 24h / 30d) with limits and warnings. */
 	tokenUsageSummary: () => typedError<TokenSummary, AppError>(__TAURI_INVOKE("token_usage_summary")),
+	/**  Reports entry count and total bytes. */
+	cacheStats: () => typedError<CacheStats, AppError>(__TAURI_INVOKE("cache_stats")),
+	/**  Clears the whole cache, or one entry type, and returns the fresh stats. */
+	cacheClear: (entryType: string | null) => typedError<CacheStats, AppError>(__TAURI_INVOKE("cache_clear", { entryType })),
 };
 
 /* Types */
@@ -118,6 +122,12 @@ export type AppError =
 { kind: "database"; message: string } | 
 /**  Catch-all for unexpected failures. */
 { kind: "internal"; message: string };
+
+/**  Cache usage totals for the Settings UI. */
+export type CacheStats = {
+	entries: number,
+	bytes: number,
+};
 
 /**  A folder inside a project. `parent_id` enables nesting. */
 export type Folder = {

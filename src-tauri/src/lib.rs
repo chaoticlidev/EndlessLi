@@ -15,7 +15,7 @@ use specta_typescript::Typescript;
 use tauri::Manager;
 use tauri_specta::{collect_commands, Builder};
 
-use commands::{folders, links, notes, projects, secrets, settings, tags};
+use commands::{cache, folders, links, notes, projects, secrets, settings, tags};
 
 /// The full IPC surface, exposed for the bindings export test.
 /// Both `run` and codegen build from this one list so bindings can never
@@ -58,6 +58,8 @@ pub fn specta_builder() -> Builder<tauri::Wry> {
         secrets::api_key_status,
         secrets::api_key_test,
         secrets::token_usage_summary,
+        cache::cache_stats,
+        cache::cache_clear,
     ])
 }
 
