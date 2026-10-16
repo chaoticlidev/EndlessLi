@@ -8,6 +8,7 @@
 use el_core::{AppError, AppResult};
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
+use std::future::Future;
 
 /// One chat message.
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
@@ -56,10 +57,8 @@ pub struct ChatResponse {
 /// A provider speaks one HTTP dialect. Implementations must be safe to share
 /// across tasks; the HTTP client is cheap to clone.
 ///
-/// Native `async fn` is used deliberately instead of desugared futures: every
-/// implementor lives in this crate, and the futures only capture `Send` data
-/// (`&self` with `Send + Sync` receivers, owned requests, channels).
-#[allow(async_fn_in_trait)]
+/// Methods are desugared futures with explicit `Send` bounds (rather than
+/// `async fn`) so orchestration can spawn provider calls onto tasks.
 pub trait LlmProvider: Send + Sync {
     /// Stable id used in logs and the `token_usage` table.
     fn name(&self) -> &'static str;
@@ -67,21 +66,26 @@ pub trait LlmProvider: Send + Sync {
     /// Streams chunks into `chunks` and resolves with the call's usage.
     /// Callers forward chunks to the UI or drop them; the channel is
     /// unbounded so producers never block.
-    async fn complete_stream(
+    fn complete_stream(
         &self,
         request: ChatRequest,
         chunks: tokio::sync::mpsc::UnboundedSender<String>,
-    ) -> AppResult<ChatUsage>;
+    ) -> impl Future<Output = AppResult<ChatUsage>> + Send + '_;
 
     /// Collects the stream into one response.
-    async fn complete(&self, request: ChatRequest) -> AppResult<ChatResponse> {
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-        let usage = self.complete_stream(request, tx).await?;
-        let mut text = String::new();
-        while let Some(chunk) = rx.recv().await {
-            text.push_str(&chunk);
+    fn complete(
+        &self,
+        request: ChatRequest,
+    ) -> impl Future<Output = AppResult<ChatResponse>> + Send + '_ {
+        async move {
+            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+            let usage = self.complete_stream(request, tx).await?;
+            let mut text = String::new();
+            while let Some(chunk) = rx.recv().await {
+                text.push_str(&chunk);
+            }
+            Ok(ChatResponse { text, usage })
         }
-        Ok(ChatResponse { text, usage })
     }
 }
 
@@ -420,6 +424,9 @@ pub struct DeepSeek {
 /// Default DeepSeek endpoint.
 pub const DEEPSEEK_BASE_URL: &str = "https://api.deepseek.com";
 
+/// Default OpenAI endpoint for the compatible dialect.
+pub const OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
+
 impl DeepSeek {
     /// Builds a client against the DeepSeek endpoint.
     pub fn new(api_key: &str) -> AppResult<Self> {
@@ -440,6 +447,54 @@ impl LlmProvider for DeepSeek {
         chunks: tokio::sync::mpsc::UnboundedSender<String>,
     ) -> AppResult<ChatUsage> {
         self.inner.complete_stream(request, chunks).await
+    }
+}
+
+/// Any configured provider behind one type, so shells can dispatch on a
+/// settings string without boxing (native `async fn` is not object-safe).
+pub enum AnyProvider {
+    OpenAi(OpenAiCompatible),
+    Anthropic(Anthropic),
+    DeepSeek(DeepSeek),
+}
+
+impl AnyProvider {
+    /// Builds the provider named by settings: `openai` (or anything else,
+    /// for compatible endpoints), `anthropic`, or `deepseek`.
+    pub fn from_parts(provider: &str, base_url: Option<&str>, api_key: &str) -> AppResult<Self> {
+        match provider {
+            "anthropic" => Ok(Self::Anthropic(Anthropic::new(api_key)?)),
+            "deepseek" => Ok(Self::DeepSeek(DeepSeek::new(api_key)?)),
+            _ => {
+                let base = match base_url {
+                    Some(url) if !url.trim().is_empty() => url.trim().to_string(),
+                    _ => OPENAI_BASE_URL.to_string(),
+                };
+                Ok(Self::OpenAi(OpenAiCompatible::new(&base, api_key)?))
+            }
+        }
+    }
+}
+
+impl LlmProvider for AnyProvider {
+    fn name(&self) -> &'static str {
+        match self {
+            Self::OpenAi(_) => "openai",
+            Self::Anthropic(_) => "anthropic",
+            Self::DeepSeek(_) => "deepseek",
+        }
+    }
+
+    async fn complete_stream(
+        &self,
+        request: ChatRequest,
+        chunks: tokio::sync::mpsc::UnboundedSender<String>,
+    ) -> AppResult<ChatUsage> {
+        match self {
+            Self::OpenAi(inner) => inner.complete_stream(request, chunks).await,
+            Self::Anthropic(inner) => inner.complete_stream(request, chunks).await,
+            Self::DeepSeek(inner) => inner.complete_stream(request, chunks).await,
+        }
     }
 }
 

@@ -1,14 +1,21 @@
 //! `el-research`: Light Search and Deep Dive (RLM) orchestration.
 //!
-//! Why this crate exists: the Python sidecar does the network and LLM work,
-//! but Rust owns session state, cancellation tokens, step events, citation
-//! validation, and persistence. That boundary keeps partial results and
-//! cancellation semantics testable with a mocked sidecar.
+//! The Python sidecar does search and clipping; the LLM client synthesizes.
+//! Rust owns session state, cancellation tokens, step events, citation
+//! validation, and persistence, so partial results and cancellation stay
+//! testable with stub tools and no network.
 
+pub mod citations;
+pub mod context;
+pub mod research;
+pub mod tools;
+
+pub use citations::{renumber_citations, validate_citations};
+pub use context::build_context;
 pub use el_core::{AppError, AppResult};
-
-/// Maximum recursion depth for Deep Dive sub-questions (C-8).
-pub const MAX_DEPTH: u32 = 2;
-
-/// Default cap on total LLM calls per Deep Dive session.
-pub const DEFAULT_LLM_CALL_CAP: u32 = 25;
+pub use research::{
+    cancellable, extract_insights, is_cancelled, llm_call, parse_sub_questions, run_deep,
+    run_light, CallBudget, ChannelSink, EventSink, LightOutcome, NullSink, ResearchEvent,
+    ResearchEventKind, RunConfig, SourceRef, DEEP_PARALLELISM, DEFAULT_CLIP_COUNT,
+    DEFAULT_LLM_CALL_CAP, DEFAULT_MAX_CONTEXT_TOKENS, MAX_DEPTH, MAX_SUB_QUESTIONS,
+};

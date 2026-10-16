@@ -97,7 +97,7 @@ function SettingField({
 }
 
 function ProviderKeys() {
-  const { data: status } = useKeyStatus();
+  const { data: status, error: statusError } = useKeyStatus();
   const setKey = useSetKey();
   const deleteKey = useDeleteKey();
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -140,6 +140,12 @@ function ProviderKeys() {
 
   return (
     <div className="flex flex-col gap-3">
+      {statusError && (
+        <p className="rounded-md border border-amber-400 p-2 text-xs text-amber-700 dark:text-amber-400">
+          Could not read the keychain: {errorMessage(statusError)}. Stored keys
+          may still work — this only affects the status display.
+        </p>
+      )}
       {LLM_PROVIDERS.map((provider) => {
         const configured = status?.find(
           (entry) => entry.provider === provider.id,
@@ -188,7 +194,15 @@ function ProviderKeys() {
                   <button
                     type="button"
                     title={`Delete ${provider.label} key`}
-                    onClick={() => deleteKey.mutate(provider.id)}
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          `Delete the stored ${provider.label} key? Research will stop working until a new key is saved.`,
+                        )
+                      ) {
+                        deleteKey.mutate(provider.id);
+                      }
+                    }}
                     className="shrink-0 rounded-md border border-neutral-300 px-2 py-1 dark:border-neutral-600"
                   >
                     <Trash2 size={13} />

@@ -7,7 +7,17 @@ description = "EndlessLi research orchestration over the Python sidecar (Phase 5
 
 [dependencies]
 el-core = { workspace = true }
+el-db = { workspace = true }
+el-llm = { workspace = true }
+el-cache = { workspace = true }
+el-security = { workspace = true }
+rusqlite = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+regex = { workspace = true }
+tracing = { workspace = true }
 
 [lints]
 workspace = true

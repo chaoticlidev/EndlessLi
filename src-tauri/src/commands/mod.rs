@@ -11,6 +11,7 @@ pub mod folders;
 pub mod links;
 pub mod notes;
 pub mod projects;
+pub mod research;
 pub mod secrets;
 pub mod settings;
 pub mod tags;

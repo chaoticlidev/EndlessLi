@@ -5,6 +5,7 @@ import { queryClient } from "../ipc/queries";
 import { PillNav } from "./PillNav";
 import { CommandPalette } from "./CommandPalette";
 import { KnowledgeBaseView } from "./KnowledgeBaseView";
+import { ResearchView } from "../features/research/ResearchView";
 import { SettingsView } from "../features/settings/SettingsView";
 import { ComingSoon } from "./ComingSoon";
 
@@ -43,12 +44,7 @@ function ActiveTab() {
     case "knowledge":
       return <KnowledgeBaseView />;
     case "research":
-      return (
-        <ComingSoon
-          title="Research"
-          text="Search-based research with cited results arrives in the next milestone."
-        />
-      );
+      return <ResearchView />;
     case "library":
       return (
         <ComingSoon

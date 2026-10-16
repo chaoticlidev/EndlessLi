@@ -1492,8 +1492,18 @@ dependencies = [
 name = "el-research"
 version = "0.3.0"
 dependencies = [
+ "el-cache",
  "el-core",
+ "el-db",
+ "el-llm",
+ "el-security",
+ "regex",
+ "rusqlite",
  "serde",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+ "tracing",
 ]
 
 [[package]]
@@ -1560,9 +1570,11 @@ version = "0.3.0"
 dependencies = [
  "chrono",
  "el-analytics",
+ "el-cache",
  "el-core",
  "el-db",
  "el-llm",
+ "el-research",
  "el-security",
  "embed-resource",
  "rusqlite",
@@ -1576,6 +1588,7 @@ dependencies = [
  "tauri-specta",
  "thiserror 2.0.21",
  "tokio",
+ "tokio-util",
  "tracing",
  "tracing-subscriber",
  "uuid",

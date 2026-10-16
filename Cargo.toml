@@ -19,6 +19,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rusqlite = { version = "0.40", features = ["bundled"] }
 rusqlite_migration = "2.6.0"
 r2d2 = "0.8"
+regex = "1"
+tokio-util = "0.7"
 keyring = "4"
 reqwest = { version = "0.13", features = ["json", "stream"] }
 tiktoken-rs = "0.12"

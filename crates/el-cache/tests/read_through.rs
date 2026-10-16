@@ -27,7 +27,6 @@ fn input(query: &str) -> CacheInput {
         entry_type: "search",
         query: query.to_string(),
         model: "ddg".to_string(),
-        source_type: "ddg".to_string(),
         ttl_secs: None,
     }
 }

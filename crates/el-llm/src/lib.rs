@@ -12,8 +12,8 @@ pub mod tokens;
 pub use budgets::{check_budget, BudgetCheck};
 pub use el_core::{AppError, AppResult};
 pub use provider::{
-    Anthropic, ChatMessage, ChatRequest, ChatResponse, ChatUsage, DeepSeek, LlmProvider,
-    OpenAiCompatible, ANTHROPIC_VERSION, DEEPSEEK_BASE_URL,
+    Anthropic, AnyProvider, ChatMessage, ChatRequest, ChatResponse, ChatUsage, DeepSeek,
+    LlmProvider, OpenAiCompatible, ANTHROPIC_VERSION, DEEPSEEK_BASE_URL, OPENAI_BASE_URL,
 };
 pub use tokens::{estimate_messages, estimate_text, TokenEstimate};
 

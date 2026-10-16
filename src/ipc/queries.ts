@@ -379,3 +379,79 @@ export function useRemoveLink() {
     },
   });
 }
+
+export function useResearchHistory(limit = 50) {
+  return useQuery({
+    queryKey: ["research-history", limit],
+    queryFn: () => call(() => commands.researchHistory(limit)),
+  });
+}
+
+export function useResearchView(sessionId: string | null) {
+  return useQuery({
+    queryKey: ["research-view", sessionId],
+    queryFn: () => call(() => commands.researchGet(sessionId ?? "")),
+    enabled: sessionId !== null,
+    refetchInterval: (query) => {
+      const status = query.state.data?.session.status;
+      return status === "in_progress" || status === "pending" ? 1500 : false;
+    },
+  });
+}
+
+export function useStartResearch() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (args: {
+      query: string;
+      mode: string;
+      projectId: string | null;
+      folderId: string | null;
+      sessionMemory: string | null;
+    }) =>
+      call(() =>
+        commands.researchStart(
+          args.query,
+          args.mode,
+          args.projectId,
+          args.folderId,
+          args.sessionMemory,
+        ),
+      ),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["research-history"] });
+    },
+  });
+}
+
+export function useCancelResearch() {
+  return useMutation({
+    mutationFn: (sessionId: string) =>
+      call(() => commands.researchCancel(sessionId)),
+  });
+}
+
+export function useSaveResults() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (args: {
+      sessionId: string;
+      title: string;
+      projectId: string | null;
+      folderId: string | null;
+      resultIds: string[];
+    }) =>
+      call(() =>
+        commands.researchSaveResults(
+          args.sessionId,
+          args.title,
+          args.projectId,
+          args.folderId,
+          args.resultIds,
+        ),
+      ),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["notes"] });
+    },
+  });
+}

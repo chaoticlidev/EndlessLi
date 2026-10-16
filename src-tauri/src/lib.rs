@@ -1,10 +1,10 @@
 //! EndlessLi Tauri shell: app lifecycle, IPC wiring, and sidecar ownership.
 //!
 //! `main.rs` stays a two-line entry point while this library owns setup
-//! (logging, database, state, plugins). Command handlers live in
+//! (logging, database, sidecar, state, plugins). Command handlers live in
 //! [`commands`] and stay thin; domain logic lives in `crates/el-*`.
 //! TypeScript bindings for every command are generated into
-//! `src/ipc/bindings.ts` on debug builds and in the export test below.
+//! `src/ipc/bindings.ts` on debug builds and in the export test.
 
 pub mod commands;
 pub mod logging;
@@ -12,58 +12,71 @@ pub mod sidecar;
 pub mod state;
 
 use specta_typescript::Typescript;
-use tauri::Manager;
-use tauri_specta::{collect_commands, Builder};
+use tauri::{Emitter, Manager};
+use tauri_specta::{collect_commands, collect_events, Builder, Event as SpectaEvent};
 
-use commands::{cache, folders, links, notes, projects, secrets, settings, tags};
+use commands::{cache, folders, links, notes, projects, research, secrets, settings, tags};
 
 /// The full IPC surface, exposed for the bindings export test.
 /// Both `run` and codegen build from this one list so bindings can never
 /// drift from the handler registration.
 pub fn specta_builder() -> Builder<tauri::Wry> {
-    Builder::<tauri::Wry>::new().commands(collect_commands![
-        projects::project_list,
-        projects::project_create,
-        projects::project_update,
-        projects::project_archive,
-        projects::project_delete,
-        folders::folder_tree,
-        folders::folder_create,
-        folders::folder_rename,
-        folders::folder_move,
-        folders::folder_delete,
-        notes::note_list,
-        notes::note_get,
-        notes::note_detail,
-        notes::note_create,
-        notes::note_update,
-        notes::note_move,
-        notes::note_delete,
-        notes::note_branch,
-        notes::note_search,
-        notes::note_find_by_title,
-        tags::tag_list,
-        tags::tag_create,
-        tags::tag_assign,
-        tags::tag_unassign,
-        tags::tag_delete,
-        links::link_create_manual,
-        links::link_remove,
-        links::links_for_note,
-        links::link_reject,
-        settings::settings_get,
-        settings::settings_update,
-        secrets::api_key_set,
-        secrets::api_key_delete,
-        secrets::api_key_status,
-        secrets::api_key_test,
-        secrets::token_usage_summary,
-        cache::cache_stats,
-        cache::cache_clear,
-    ])
+    Builder::<tauri::Wry>::new()
+        .commands(collect_commands![
+            projects::project_list,
+            projects::project_create,
+            projects::project_update,
+            projects::project_archive,
+            projects::project_delete,
+            folders::folder_tree,
+            folders::folder_create,
+            folders::folder_rename,
+            folders::folder_move,
+            folders::folder_delete,
+            notes::note_list,
+            notes::note_get,
+            notes::note_detail,
+            notes::note_create,
+            notes::note_update,
+            notes::note_move,
+            notes::note_delete,
+            notes::note_branch,
+            notes::note_search,
+            notes::note_find_by_title,
+            tags::tag_list,
+            tags::tag_create,
+            tags::tag_assign,
+            tags::tag_unassign,
+            tags::tag_delete,
+            links::link_create_manual,
+            links::link_remove,
+            links::links_for_note,
+            links::link_reject,
+            settings::settings_get,
+            settings::settings_update,
+            secrets::api_key_set,
+            secrets::api_key_delete,
+            secrets::api_key_status,
+            secrets::api_key_test,
+            secrets::token_usage_summary,
+            cache::cache_stats,
+            cache::cache_clear,
+            research::research_start,
+            research::research_cancel,
+            research::research_get,
+            research::research_history,
+            research::research_save_results,
+            research::sidecar_status,
+        ])
+        .events(collect_events![
+            research::ResearchStepEvent,
+            research::ResearchResultEvent,
+            research::ResearchStatusEvent,
+        ])
 }
 
-/// Bootstraps logging, the database, shared state, and plugins, then runs.
+/// Bootstraps logging, the database, the sidecar, shared state, event
+/// forwarding, and plugins, then runs.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = specta_builder();
@@ -86,14 +99,65 @@ pub fn run() {
                 .unwrap_or_else(|_| data_dir.join(logging::LOG_DB_FILENAME));
             let db = el_db::Database::open(&data_dir.join("endlessli.db"))
                 .map_err(|err| format!("open database: {err}"))?;
+
+            let (sidecar_tx, mut sidecar_rx) = tokio::sync::mpsc::unbounded_channel();
+            let sidecar = sidecar::SidecarManager::new(sidecar_tx);
+            let (research_tx, mut research_rx) =
+                tokio::sync::mpsc::unbounded_channel::<el_research::ResearchEvent>();
+
             app.manage(state::AppState {
                 db,
+                sidecar,
+                research: state::ResearchRegistry::default(),
+                research_tx,
                 data_dir,
                 log_db_path,
             });
+
+            let app_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                while let Some(status) = sidecar_rx.recv().await {
+                    let _ = app_handle.emit("sidecar://status", format!("{status:?}"));
+                }
+            });
+            let app_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                while let Some(event) = research_rx.recv().await {
+                    forward_research_event(&app_handle, event);
+                }
+            });
+
             tracing::info!("EndlessLi starting");
             Ok(())
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// Maps orchestration progress onto the typed research events.
+fn forward_research_event(app: &tauri::AppHandle, event: el_research::ResearchEvent) {
+    use el_research::ResearchEventKind;
+    match event.kind {
+        ResearchEventKind::Step(step) => {
+            let _ = research::ResearchStepEvent {
+                session_id: event.session_id,
+                step,
+            }
+            .emit(app);
+        }
+        ResearchEventKind::Result(result) => {
+            let _ = research::ResearchResultEvent {
+                session_id: event.session_id,
+                result,
+            }
+            .emit(app);
+        }
+        ResearchEventKind::Status(status) => {
+            let _ = research::ResearchStatusEvent {
+                session_id: event.session_id,
+                status,
+            }
+            .emit(app);
+        }
+    }
 }

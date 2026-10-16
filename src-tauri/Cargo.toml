@@ -29,9 +29,12 @@ rusqlite = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 tokio = { workspace = true }
+tokio-util = { workspace = true }
 el-core = { workspace = true }
 el-db = { workspace = true }
 el-llm = { workspace = true }
+el-cache = { workspace = true }
+el-research = { workspace = true }
 el-security = { workspace = true }
 el-analytics = { workspace = true, optional = true }
 

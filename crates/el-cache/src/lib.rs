@@ -24,8 +24,6 @@ pub struct CacheInput {
     pub query: String,
     /// Model or provider id distinguishing the response space.
     pub model: String,
-    /// Where a fresh response came from (e.g. `ddg`, `openai`).
-    pub source_type: String,
     /// Seconds until expiry. Falls back to the per-type policy when `None`
     /// (search 24h, webpage 7d, everything else immortal).
     pub ttl_secs: Option<i64>,
