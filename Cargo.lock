@@ -1491,6 +1491,8 @@ name = "el-memory"
 version = "0.3.0"
 dependencies = [
  "el-core",
+ "el-db",
+ "rusqlite",
  "serde",
 ]
 
@@ -1582,6 +1584,7 @@ dependencies = [
  "el-db",
  "el-linking",
  "el-llm",
+ "el-memory",
  "el-research",
  "el-security",
  "embed-resource",

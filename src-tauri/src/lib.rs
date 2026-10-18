@@ -20,7 +20,7 @@ use tauri::{Emitter, Manager};
 use tauri_specta::{collect_commands, collect_events, Builder, Event as SpectaEvent};
 
 use commands::{
-    analytics as analytics_commands, cache, compression as compression_commands, embedding as embedding_commands, folders, links, notes,
+    analytics as analytics_commands, cache, compression as compression_commands, embedding as embedding_commands, folders, links, memory as memory_commands, notes,
     projects, research, secrets, settings, tags,
 };
 
@@ -61,6 +61,18 @@ pub fn specta_builder() -> Builder<tauri::Wry> {
             links::link_reject,
             links::link_suggestions,
             links::link_approve,
+            memory_commands::memory_list,
+            memory_commands::memory_create,
+            memory_commands::memory_update,
+            memory_commands::memory_forget,
+            memory_commands::memory_delete,
+            memory_commands::memory_suggestions,
+            memory_commands::memory_accept_suggestion,
+            memory_commands::memory_reject_suggestion,
+            memory_commands::memory_set_enabled,
+            memory_commands::memory_is_enabled,
+            memory_commands::memory_build_context,
+            memory_commands::memory_sweep_expired,
             embedding_commands::embedding_status,
             embedding_commands::embedding_set_model,
             embedding_commands::embedding_reindex,

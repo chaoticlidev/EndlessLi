@@ -12,6 +12,7 @@ pub mod compression;
 pub mod embedding;
 pub mod folders;
 pub mod links;
+pub mod memory;
 pub mod notes;
 pub mod projects;
 pub mod research;

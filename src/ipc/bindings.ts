@@ -91,6 +91,18 @@ export const commands = {
 	 *  `auto_approved`.
 	 */
 	linkApprove: (a: string, b: string, similarity: number | null) => typedError<NoteLink, AppError>(__TAURI_INVOKE("link_approve", { a, b, similarity })),
+	memoryList: (projectId: string | null) => typedError<MemoryEntry[], AppError>(__TAURI_INVOKE("memory_list", { projectId })),
+	memoryCreate: (memoryType: string, projectId: string | null, content: string, expiresAt: number | null) => typedError<MemoryEntry, AppError>(__TAURI_INVOKE("memory_create", { memoryType, projectId, content, expiresAt })),
+	memoryUpdate: (id: string, content: string) => typedError<MemoryEntry, AppError>(__TAURI_INVOKE("memory_update", { id, content })),
+	memoryForget: (id: string) => typedError<null, AppError>(__TAURI_INVOKE("memory_forget", { id })),
+	memoryDelete: (id: string) => typedError<null, AppError>(__TAURI_INVOKE("memory_delete", { id })),
+	memorySuggestions: () => typedError<MemorySuggestion[], AppError>(__TAURI_INVOKE("memory_suggestions")),
+	memoryAcceptSuggestion: (id: string) => typedError<MemoryEntry, AppError>(__TAURI_INVOKE("memory_accept_suggestion", { id })),
+	memoryRejectSuggestion: (id: string) => typedError<null, AppError>(__TAURI_INVOKE("memory_reject_suggestion", { id })),
+	memorySetEnabled: (enabled: boolean) => typedError<null, AppError>(__TAURI_INVOKE("memory_set_enabled", { enabled })),
+	memoryIsEnabled: () => typedError<boolean, AppError>(__TAURI_INVOKE("memory_is_enabled")),
+	memoryBuildContext: (projectId: string | null, sessionMemory: string | null) => typedError<string, AppError>(__TAURI_INVOKE("memory_build_context", { projectId, sessionMemory })),
+	memorySweepExpired: () => typedError<number, AppError>(__TAURI_INVOKE("memory_sweep_expired")),
 	/**
 	 *  Reports the active model, its dimension and availability, and how many
 	 *  notes are embedded with it.
@@ -265,6 +277,27 @@ export type LinkedNote = {
 export type LinkingSuggestionsEvent = {
 	note_id: string,
 	candidates: LinkCandidate[],
+};
+
+/**  A durable memory: global, or scoped to one project. */
+export type MemoryEntry = {
+	id: string,
+	memory_type: string,
+	project_id: string | null,
+	content: string,
+	source: string,
+	created_at: number,
+	expires_at: number,
+	is_active: boolean,
+};
+
+/**  An AI-suggested memory awaiting user approval. Never used directly. */
+export type MemorySuggestion = {
+	id: string,
+	project_id: string | null,
+	content: string,
+	session_id: string | null,
+	created_at: number,
 };
 
 /**  Fields accepted when creating a folder. */

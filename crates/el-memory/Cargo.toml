@@ -7,6 +7,8 @@ description = "EndlessLi user-controlled memory manager (Phase 8)"
 
 [dependencies]
 el-core = { workspace = true }
+el-db = { workspace = true }
+rusqlite = { workspace = true }
 serde = { workspace = true }
 
 [lints]

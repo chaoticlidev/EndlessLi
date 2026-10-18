@@ -36,6 +36,7 @@ el-llm = { workspace = true }
 el-cache = { workspace = true }
 el-research = { workspace = true }
 el-linking = { workspace = true }
+el-memory = { workspace = true }
 el-security = { workspace = true }
 el-analytics = { workspace = true }
 el-compress = { workspace = true }
