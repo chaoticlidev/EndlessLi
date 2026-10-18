@@ -15,6 +15,7 @@ from typing import Any, Callable
 
 from . import __version__
 from .clip import clip_url
+from .embed import MAX_TEXTS, EmbeddingUnavailable, embed_texts, model_info
 from .search import PROVIDERS, ProviderContext, search_with_fallback
 
 #: JSON-RPC error codes used by this server.
@@ -113,11 +114,46 @@ class SidecarError(RuntimeError):
     """A failure worth reporting without a stack trace in the message."""
 
 
+def method_embed_model_info(params: Any) -> dict[str, Any]:
+    """Reports an embedding model's dimension and availability."""
+    if params is not None and not isinstance(params, dict):
+        raise ParamError("params must be an object")
+    model = (params or {}).get("model")
+    if model is not None and not isinstance(model, str):
+        raise ParamError("model must be a string")
+    return model_info(model)
+
+
+def method_embed_texts(params: Any) -> dict[str, Any]:
+    """Embeds a batch of texts, returning one vector per input in order."""
+    if not isinstance(params, dict):
+        raise ParamError("params must be an object")
+    _require(params, "texts")
+    texts = params["texts"]
+    if not isinstance(texts, list) or not texts or not all(isinstance(text, str) for text in texts):
+        raise ParamError("texts must be a non-empty string list")
+    if len(texts) > MAX_TEXTS:
+        raise ParamError(f"too many texts (max {MAX_TEXTS})")
+    model = params.get("model")
+    if model is not None and not isinstance(model, str):
+        raise ParamError("model must be a string")
+    try:
+        return embed_texts(texts, model)
+    except ValueError as exc:
+        raise ParamError(str(exc)) from exc
+    except EmbeddingUnavailable as exc:
+        raise SidecarError(str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001 - surfaced as JSON-RPC errors
+        raise SidecarError(f"embedding failed: {exc}") from exc
+
+
 METHODS: dict[str, Callable[[Any], Any]] = {
     "health.check": method_health_check,
     "search.providers": method_search_providers,
     "search.query": method_search_query,
     "clip.url": method_clip_url,
+    "embed.model_info": method_embed_model_info,
+    "embed.texts": method_embed_texts,
 }
 
 

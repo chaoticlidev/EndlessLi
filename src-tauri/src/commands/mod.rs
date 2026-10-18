@@ -6,7 +6,9 @@
 //! `#[specta::specta]` so `src/ipc/bindings.ts` is generated from this
 //! module list; nothing on the frontend is hand-copied from Rust.
 
+pub mod analytics;
 pub mod cache;
+pub mod embedding;
 pub mod folders;
 pub mod links;
 pub mod notes;

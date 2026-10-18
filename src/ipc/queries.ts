@@ -455,3 +455,85 @@ export function useSaveResults() {
     },
   });
 }
+
+/** Auto-linking candidates for a note (top matches above the threshold). */
+export function useLinkSuggestions(noteId: string) {
+  return useQuery({
+    queryKey: ["link-suggestions", noteId],
+    queryFn: () => call(() => commands.linkSuggestions(noteId)),
+  });
+}
+
+export function useApproveLink() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { a: string; b: string; similarity?: number | null }) =>
+      call(() => commands.linkApprove(args.a, args.b, args.similarity ?? null)),
+    onSuccess: (_data, args) => {
+      void client.invalidateQueries({ queryKey: ["note-detail", args.a] });
+      void client.invalidateQueries({ queryKey: ["note-detail", args.b] });
+      void client.invalidateQueries({ queryKey: ["link-suggestions", args.a] });
+      void client.invalidateQueries({ queryKey: ["link-suggestions", args.b] });
+      void client.invalidateQueries({ queryKey: ["notes"] });
+    },
+  });
+}
+
+export function useRejectLink() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { a: string; b: string }) =>
+      call(() => commands.linkReject(args.a, args.b)),
+    onSuccess: (_data, args) => {
+      void client.invalidateQueries({ queryKey: ["link-suggestions", args.a] });
+      void client.invalidateQueries({ queryKey: ["link-suggestions", args.b] });
+    },
+  });
+}
+
+/** Active embedding model, availability, and note coverage. */
+export function useEmbeddingStatus() {
+  return useQuery({
+    queryKey: ["embedding-status"],
+    queryFn: () => call(() => commands.embeddingStatus()),
+    staleTime: 0,
+    // Keep the coverage bar live while the worker catches up. Polls only
+    // while notes remain unembedded and the backend is present, so it stops
+    // on its own once coverage is full.
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (!data || !data.available) return false;
+      return data.embedded < data.total ? 2_000 : false;
+    },
+  });
+}
+
+export function useSetEmbeddingModel() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (model: string) =>
+      call(() => commands.embeddingSetModel(model)),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["embedding-status"] });
+    },
+  });
+}
+
+export function useReindexEmbeddings() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => call(() => commands.embeddingReindex()),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["embedding-status"] });
+    },
+  });
+}
+
+/** DuckDB analytical store availability and chunk count. */
+export function useAnalyticsStatus() {
+  return useQuery({
+    queryKey: ["analytics-status"],
+    queryFn: () => call(() => commands.analyticsStatus()),
+    staleTime: 0,
+  });
+}

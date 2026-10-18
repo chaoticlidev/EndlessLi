@@ -421,3 +421,39 @@ pub struct SimilarNote {
     /// Cosine distance (0.0 is identical) from the sqlite-vec cosine metric.
     pub distance: f64,
 }
+
+/// Dimension and availability of an embedding model, as reported by the
+/// sidecar. `available` is false when the embedding backend (ONNX runtime)
+/// or the model weights are missing, so the UI can degrade gracefully.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+pub struct EmbeddingModelInfo {
+    pub model: String,
+    #[specta(type = specta_typescript::Number)]
+    pub dim: u32,
+    pub available: bool,
+    pub is_default: bool,
+}
+
+/// One auto-linking candidate shown in the approval panel. `similarity` is
+/// cosine similarity (1.0 identical), derived from the vector distance.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct LinkCandidate {
+    pub note_id: String,
+    pub title: String,
+    #[specta(type = specta_typescript::Number)]
+    pub similarity: f64,
+}
+
+/// Embedding coverage for the Settings panel: how many notes are embedded
+/// with the active model versus how many exist.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+pub struct EmbeddingStatus {
+    pub model: String,
+    #[specta(type = specta_typescript::Number)]
+    pub dim: u32,
+    pub available: bool,
+    #[specta(type = specta_typescript::Number)]
+    pub embedded: i64,
+    #[specta(type = specta_typescript::Number)]
+    pub total: i64,
+}

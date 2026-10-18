@@ -1,6 +1,6 @@
 [project]
 name = "endlessli-sidecar"
-version = "0.4.0"
+version = "0.5.0"
 description = "EndlessLi Python sidecar: search, clipping, and ML tools"
 requires-python = ">=3.11"
 dependencies = [
@@ -10,7 +10,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
+# Local ONNX embeddings for auto-linking. Optional so search/clip installs
+# stay light; the app degrades gracefully when it is absent.
+embeddings = ["fastembed>=0.9,<1"]
+dev = ["pytest>=8.0", "fastembed>=0.9,<1"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

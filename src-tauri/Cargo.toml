@@ -35,11 +35,12 @@ el-db = { workspace = true }
 el-llm = { workspace = true }
 el-cache = { workspace = true }
 el-research = { workspace = true }
+el-linking = { workspace = true }
 el-security = { workspace = true }
-el-analytics = { workspace = true, optional = true }
+el-analytics = { workspace = true }
 
 [features]
-default = []
+default = ["analytics"]
 # DuckDB analytical engine, enabled at Phase 6 per ADR-002.
 analytics = ["el-analytics/duckdb"]
 

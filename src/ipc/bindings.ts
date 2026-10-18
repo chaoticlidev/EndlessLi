@@ -80,6 +80,31 @@ export const commands = {
 	linksForNote: (noteId: string) => typedError<NoteLink[], AppError>(__TAURI_INVOKE("links_for_note", { noteId })),
 	/**  Rejects a pair so it is never suggested again. */
 	linkReject: (a: string, b: string) => typedError<null, AppError>(__TAURI_INVOKE("link_reject", { a, b })),
+	/**
+	 *  Returns the current auto-linking candidates for a note: the top matches by
+	 *  cosine similarity above the configured threshold, excluding existing links
+	 *  and past rejections.
+	 */
+	linkSuggestions: (noteId: string) => typedError<LinkCandidate[], AppError>(__TAURI_INVOKE("link_suggestions", { noteId })),
+	/**
+	 *  Approves a suggested link, writing it once (canonical order) with origin
+	 *  `auto_approved`.
+	 */
+	linkApprove: (a: string, b: string, similarity: number | null) => typedError<NoteLink, AppError>(__TAURI_INVOKE("link_approve", { a, b, similarity })),
+	/**
+	 *  Reports the active model, its dimension and availability, and how many
+	 *  notes are embedded with it.
+	 */
+	embeddingStatus: () => typedError<EmbeddingStatus, AppError>(__TAURI_INVOKE("embedding_status")),
+	/**
+	 *  Switches the embedding model: persists it, reconciles the vector table,
+	 *  then queues a full re-embed in the background. Returns the new status.
+	 */
+	embeddingSetModel: (model: string) => typedError<EmbeddingStatus, AppError>(__TAURI_INVOKE("embedding_set_model", { model })),
+	/**  Queues every note that lacks a current vector for the active model. */
+	embeddingReindex: () => typedError<null, AppError>(__TAURI_INVOKE("embedding_reindex")),
+	/**  Reports the analytics database path, availability, and chunk count. */
+	analyticsStatus: () => typedError<AnalyticsStatus, AppError>(__TAURI_INVOKE("analytics_status")),
 	/**  Reads one setting value (JSON), or `None` when unset. */
 	settingsGet: (key: string) => typedError<string | null, AppError>(__TAURI_INVOKE("settings_get", { key })),
 	/**  Writes one setting value (JSON), replacing any previous value. */
@@ -135,12 +160,20 @@ export const commands = {
 
 /** Events */
 export const events = {
+	linkingSuggestions: makeEvent<LinkingSuggestionsEvent>("linking://suggestions"),
 	researchResult: makeEvent<ResearchResultEvent>("research://result"),
 	researchStatus: makeEvent<ResearchStatusEvent>("research://status"),
 	researchStep: makeEvent<ResearchStepEvent>("research://step"),
 };
 
 /* Types */
+/**  Analytical store status for diagnostics and the Settings panel. */
+export type AnalyticsStatus = {
+	available: boolean,
+	path: string,
+	chunks: number,
+};
+
 /**
  *  Serializable application error returned from every Tauri command.
  * 
@@ -167,6 +200,18 @@ export type CacheStats = {
 	bytes: number,
 };
 
+/**
+ *  Embedding coverage for the Settings panel: how many notes are embedded
+ *  with the active model versus how many exist.
+ */
+export type EmbeddingStatus = {
+	model: string,
+	dim: number,
+	available: boolean,
+	embedded: number,
+	total: number,
+};
+
 /**  A folder inside a project. `parent_id` enables nesting. */
 export type Folder = {
 	id: string,
@@ -182,12 +227,31 @@ export type FolderNode = {
 	children: FolderNode[],
 };
 
+/**
+ *  One auto-linking candidate shown in the approval panel. `similarity` is
+ *  cosine similarity (1.0 identical), derived from the vector distance.
+ */
+export type LinkCandidate = {
+	note_id: string,
+	title: string,
+	similarity: number,
+};
+
 /**  A linked note as shown in the links panel. */
 export type LinkedNote = {
 	id: string,
 	title: string,
 	similarity: number | null,
 	origin: string,
+};
+
+/**
+ *  Fresh auto-linking candidates for a note, emitted as `linking://suggestions`
+ *  after the note is (re)embedded.
+ */
+export type LinkingSuggestionsEvent = {
+	note_id: string,
+	candidates: LinkCandidate[],
 };
 
 /**  Fields accepted when creating a folder. */

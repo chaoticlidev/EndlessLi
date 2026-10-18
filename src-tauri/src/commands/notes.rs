@@ -93,7 +93,9 @@ pub fn note_detail(state: State<'_, AppState>, id: String) -> AppResult<Option<N
 #[specta::specta]
 pub fn note_create(state: State<'_, AppState>, input: NewNote) -> AppResult<Note> {
     let conn = state.db.connect()?;
-    note_repo::create(&conn, &input)
+    let note = note_repo::create(&conn, &input)?;
+    state.embed.enqueue(note.id.clone());
+    Ok(note)
 }
 
 /// Updates a note's title or content. `None` fields are left unchanged.
@@ -101,7 +103,9 @@ pub fn note_create(state: State<'_, AppState>, input: NewNote) -> AppResult<Note
 #[specta::specta]
 pub fn note_update(state: State<'_, AppState>, id: String, patch: UpdateNote) -> AppResult<Note> {
     let mut conn = state.db.connect()?;
-    note_repo::update(&mut conn, &id, &patch)
+    let note = note_repo::update(&mut conn, &id, &patch)?;
+    state.embed.enqueue(note.id.clone());
+    Ok(note)
 }
 
 /// Moves a note to a project and folder, or unplaces it with `None`.
@@ -134,7 +138,9 @@ pub fn note_branch(
     title: Option<String>,
 ) -> AppResult<Note> {
     let mut conn = state.db.connect()?;
-    note_repo::branch(&mut conn, &id, title.as_deref())
+    let note = note_repo::branch(&mut conn, &id, title.as_deref())?;
+    state.embed.enqueue(note.id.clone());
+    Ok(note)
 }
 
 /// Full-text search over titles and content.

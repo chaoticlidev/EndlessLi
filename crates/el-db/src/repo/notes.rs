@@ -299,6 +299,44 @@ pub fn delete(conn: &mut Connection, id: &str) -> AppResult<()> {
     Ok(())
 }
 
+/// Counts notes embedded with `model` versus the total note count. Drives the
+/// Settings embedding-coverage display and the re-embed job.
+pub fn embedding_counts(conn: &Connection, model: &str) -> AppResult<(i64, i64)> {
+    conn.query_row(
+        "SELECT
+           COALESCE(SUM(CASE WHEN embedding_model = ?1 THEN 1 ELSE 0 END), 0),
+           COUNT(*)
+         FROM notes",
+        [model],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )
+    .map_err(map_db)
+}
+
+/// Lists ids of notes that still need embedding with `model` (never embedded,
+/// or embedded with a different model), oldest first, capped at `limit`.
+pub fn list_needing_embedding(
+    conn: &Connection,
+    model: &str,
+    limit: usize,
+) -> AppResult<Vec<String>> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT id FROM notes
+             WHERE embedding_model IS NULL OR embedding_model != ?1
+             ORDER BY updated_at ASC LIMIT ?2",
+        )
+        .map_err(map_db)?;
+    let rows = stmt
+        .query_map(rusqlite::params![model, limit as i64], |row| row.get(0))
+        .map_err(map_db)?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.map_err(map_db)?);
+    }
+    Ok(out)
+}
+
 /// Full-text search over titles and content, newest matches first.
 ///
 /// The query is wrapped as an FTS5 phrase (quotes stripped) so arbitrary user

@@ -1,17 +1,23 @@
-import { useState } from "react";
-import { Link2, Plus, Search, Unlink, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Check, Link2, Plus, Search, Sparkles, Unlink, X } from "lucide-react";
 import { useUi } from "../../stores/ui";
 import {
   errorMessage,
+  queryClient,
+  useApproveLink,
   useCreateLink,
+  useLinkSuggestions,
   useNoteSearch,
+  useRejectLink,
   useRemoveLink,
   useTitleMatches,
 } from "../../ipc/queries";
-import type { LinkedNote } from "../../ipc/bindings";
+import { events } from "../../ipc/bindings";
+import type { LinkCandidate, LinkedNote } from "../../ipc/bindings";
 import { parseWikilinks } from "./wikilinks";
 
-/** Linked-notes panel: current links, `[[wikilink]]` resolution, add-by-search. */
+/** Linked-notes panel: current links, auto-link suggestions, `[[wikilink]]`
+ *  resolution, and add-by-search. */
 export function LinksPanel({
   noteId,
   content,
@@ -27,15 +33,63 @@ export function LinksPanel({
 
   const createLink = useCreateLink();
   const removeLink = useRemoveLink();
+  const approveLink = useApproveLink();
+  const rejectLink = useRejectLink();
+  const { data: suggestions } = useLinkSuggestions(noteId);
   const { data: searchResults } = useNoteSearch(searchText.trim());
   const linkedIds = new Set(links.map((link) => link.id));
+  const candidates = (suggestions ?? []).filter(
+    (candidate) => !linkedIds.has(candidate.note_id),
+  );
   const wikilinks = parseWikilinks(content).filter((title) => title.length > 0);
+
+  // Refresh suggestions when the embedding worker finishes this note.
+  useEffect(() => {
+    let alive = true;
+    let off: (() => void) | undefined;
+    void (async () => {
+      off = await events.linkingSuggestions.listen((event) => {
+        if (event.payload.note_id === noteId) {
+          void queryClient.invalidateQueries({
+            queryKey: ["link-suggestions", noteId],
+          });
+        }
+      });
+      if (!alive) off?.();
+    })();
+    return () => {
+      alive = false;
+      off?.();
+    };
+  }, [noteId]);
 
   async function linkTo(targetId: string) {
     setError(null);
     try {
       await createLink.mutateAsync({ a: noteId, b: targetId });
       setSearchText("");
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  }
+
+  async function approve(candidate: LinkCandidate) {
+    setError(null);
+    try {
+      await approveLink.mutateAsync({
+        a: noteId,
+        b: candidate.note_id,
+        similarity: candidate.similarity,
+      });
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  }
+
+  async function reject(candidate: LinkCandidate) {
+    setError(null);
+    try {
+      await rejectLink.mutateAsync({ a: noteId, b: candidate.note_id });
     } catch (err) {
       setError(errorMessage(err));
     }
@@ -75,6 +129,49 @@ export function LinksPanel({
           </li>
         ))}
       </ul>
+
+      {candidates.length > 0 && (
+        <div className="flex flex-col gap-1 border-t border-neutral-200 pt-2 dark:border-neutral-700">
+          <h4 className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+            <Sparkles size={12} />
+            Suggested links
+          </h4>
+          {candidates.map((candidate) => (
+            <div
+              key={candidate.note_id}
+              className="group flex items-center gap-1.5 text-sm"
+            >
+              <button
+                type="button"
+                onClick={() => openNote(candidate.note_id)}
+                className="min-w-0 flex-1 truncate rounded px-1 py-0.5 text-left hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                title={`${Math.round(candidate.similarity * 100)}% similar`}
+              >
+                {candidate.title}
+              </button>
+              <span className="shrink-0 text-xs text-neutral-400">
+                {Math.round(candidate.similarity * 100)}%
+              </span>
+              <button
+                type="button"
+                title="Approve link"
+                onClick={() => void approve(candidate)}
+                className="shrink-0 rounded p-1 text-green-700 hover:bg-neutral-100 dark:text-green-400 dark:hover:bg-neutral-800"
+              >
+                <Check size={13} />
+              </button>
+              <button
+                type="button"
+                title="Reject (never suggest again)"
+                onClick={() => void reject(candidate)}
+                className="shrink-0 rounded p-1 text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+              >
+                <X size={13} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {wikilinks.length > 0 && (
         <div className="flex flex-col gap-1 border-t border-neutral-200 pt-2 dark:border-neutral-700">

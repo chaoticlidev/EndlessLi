@@ -8,16 +8,21 @@ description = "EndlessLi DuckDB analytical engine, feature-flagged until Phase 6
 [dependencies]
 el-core = { workspace = true }
 serde = { workspace = true }
+tracing = { workspace = true }
 
-# Enabled with `--features analytics` at the workspace root / src-tauri.
-# Kept optional so early builds stay fast and small (implementation plan Phase 6).
+# Enabled with `--features duckdb` (src-tauri turns it on by default).
+# `bundled` compiles DuckDB from source so no system library is required.
 [dependencies.duckdb]
 version = "1"
 optional = true
+features = ["bundled"]
 
 [features]
 default = []
 duckdb = ["dep:duckdb"]
+
+[dev-dependencies]
+uuid = { workspace = true }
 
 [lints]
 workspace = true

@@ -1,14 +1,26 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { Check, KeyRound, Loader2, Trash2, FlaskConical } from "lucide-react";
+import {
+  Check,
+  Database,
+  KeyRound,
+  Loader2,
+  RefreshCw,
+  Trash2,
+  FlaskConical,
+} from "lucide-react";
 import { commands } from "../../ipc/bindings";
 import type { TestOutcome } from "../../ipc/bindings";
 import {
   errorMessage,
+  useAnalyticsStatus,
   useCacheStats,
   useClearCache,
   useDeleteKey,
+  useEmbeddingStatus,
   useKeyStatus,
+  useReindexEmbeddings,
+  useSetEmbeddingModel,
   useSetKey,
   useSetSetting,
   useSetting,
@@ -19,6 +31,23 @@ const LLM_PROVIDERS = [
   { id: "openai", label: "OpenAI", defaultModel: "gpt-4o-mini" },
   { id: "anthropic", label: "Anthropic", defaultModel: "claude-sonnet-4-5" },
   { id: "deepseek", label: "DeepSeek", defaultModel: "deepseek-chat" },
+] as const;
+
+const EMBEDDING_MODELS = [
+  {
+    id: "sentence-transformers/all-MiniLM-L6-v2",
+    label: "MiniLM L6 v2 (384d, fast)",
+  },
+  { id: "BAAI/bge-small-en-v1.5", label: "BGE small en v1.5 (384d)" },
+  { id: "BAAI/bge-base-en-v1.5", label: "BGE base en v1.5 (768d)" },
+  {
+    id: "snowflake/snowflake-arctic-embed-s",
+    label: "Arctic embed s (384d)",
+  },
+  {
+    id: "snowflake/snowflake-arctic-embed-m",
+    label: "Arctic embed m (768d)",
+  },
 ] as const;
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -394,6 +423,132 @@ function CacheManager() {
   );
 }
 
+/** Embedding model selection, coverage, and manual re-embed. */
+function EmbeddingPanel() {
+  const { data: status } = useEmbeddingStatus();
+  const setModel = useSetEmbeddingModel();
+  const reindex = useReindexEmbeddings();
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+
+  const total = status?.total ?? 0;
+  const coverage =
+    status && total > 0 ? Math.round((status.embedded / total) * 100) : 0;
+  const active = status?.model ?? EMBEDDING_MODELS[0].id;
+  const customModel = !EMBEDDING_MODELS.some((entry) => entry.id === active);
+
+  async function change(model: string) {
+    setError(null);
+    setMessage(null);
+    try {
+      const next = await setModel.mutateAsync(model);
+      setMessage(
+        next.available
+          ? `Switched to ${next.model}; re-embedding in the background.`
+          : `Saved ${next.model}, but the embedding backend is not installed.`,
+      );
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2 text-sm">
+      <label className="flex flex-col gap-1">
+        <span className="font-medium">Embedding model</span>
+        <select
+          value={active}
+          onChange={(event) => void change(event.target.value)}
+          className="rounded-md border border-neutral-300 bg-transparent px-2 py-1 text-sm dark:border-neutral-600"
+        >
+          {EMBEDDING_MODELS.map((entry) => (
+            <option key={entry.id} value={entry.id}>
+              {entry.label}
+            </option>
+          ))}
+          {customModel && <option value={active}>{active}</option>}
+        </select>
+      </label>
+
+      {status && !status.available && (
+        <p className="rounded-md border border-amber-400 p-2 text-xs text-amber-700 dark:text-amber-400">
+          The embedding backend is not installed, so auto-linking stays off.
+          Install it with{" "}
+          <code>uv pip install -r sidecar/requirements-embeddings.txt</code> and
+          restart the app.
+        </p>
+      )}
+
+      {status && (
+        <div className="flex flex-col gap-1 text-xs text-neutral-500">
+          <p>
+            {status.model} · {status.dim} dims
+          </p>
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-700">
+            <div
+              className="h-full rounded-full bg-neutral-500"
+              style={{ width: `${coverage}%` }}
+            />
+          </div>
+          <p>
+            {status.embedded} of {status.total} notes embedded ({coverage}%)
+          </p>
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={() => {
+          setError(null);
+          setMessage(null);
+          reindex.mutate(undefined, {
+            onSuccess: () => setMessage("Re-embed queued."),
+            onError: (err) => setError(errorMessage(err)),
+          });
+        }}
+        className="flex w-fit items-center gap-1 rounded-md border border-neutral-300 px-2.5 py-1 text-xs dark:border-neutral-600"
+      >
+        <RefreshCw size={13} />
+        Re-embed missing notes
+      </button>
+
+      {message && (
+        <p className="text-xs text-green-700 dark:text-green-400">{message}</p>
+      )}
+      {error && <p className="text-xs text-red-600">{error}</p>}
+    </div>
+  );
+}
+
+/** Read-only DuckDB status for diagnostics. */
+function AnalyticsPanel() {
+  const { data: status } = useAnalyticsStatus();
+  const [showPath, setShowPath] = useState(false);
+  const fileName = status?.path.split(/[\\/]/).pop();
+  return (
+    <div className="flex flex-col gap-1 text-xs text-neutral-500">
+      <p className="flex items-center gap-1">
+        <Database size={12} />
+        {status?.available ? "DuckDB available" : "DuckDB unavailable"}
+      </p>
+      {status && (
+        <button
+          type="button"
+          onClick={() => setShowPath((value) => !value)}
+          title={showPath ? "Hide full path" : "Show full path"}
+          className="w-fit text-left underline decoration-dotted underline-offset-2 hover:text-neutral-700 dark:hover:text-neutral-300"
+        >
+          {fileName}
+        </button>
+      )}
+      {status && showPath && (
+        <p className="break-all text-neutral-400">{status.path}</p>
+      )}
+      {status && <p>{status.chunks} corpus chunks stored</p>}
+    </div>
+  );
+}
+
 /** Settings tab: providers, keys, models, embedding, cache, budgets. */
 export function SettingsView() {
   const { data: provider } = useSetting("llm.provider");
@@ -444,12 +599,17 @@ export function SettingsView() {
       </Section>
 
       <Section title="Embedding">
+        <EmbeddingPanel />
         <SettingField
-          settingKey="embedding.model"
-          label="Embedding model"
-          hint="Recorded now, used for auto-linking from the next milestone onward."
-          placeholder="all-MiniLM-L6-v2"
+          settingKey="linking.threshold"
+          label="Auto-link threshold (0–1)"
+          hint="Cosine similarity a suggested note must reach. 0.75 is strict for MiniLM-sized models; 0.5 surfaces more."
+          placeholder="0.75"
         />
+      </Section>
+
+      <Section title="Analytics">
+        <AnalyticsPanel />
       </Section>
 
       <Section title="Cache">

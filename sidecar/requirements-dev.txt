@@ -1,2 +1,3 @@
 -r requirements.txt
+-r requirements-embeddings.txt
 pytest>=8.0

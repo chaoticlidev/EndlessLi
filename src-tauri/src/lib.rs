@@ -11,11 +11,18 @@ pub mod logging;
 pub mod sidecar;
 pub mod state;
 
+#[cfg(feature = "analytics")]
+pub mod analytics;
+pub mod embedding;
+
 use specta_typescript::Typescript;
 use tauri::{Emitter, Manager};
 use tauri_specta::{collect_commands, collect_events, Builder, Event as SpectaEvent};
 
-use commands::{cache, folders, links, notes, projects, research, secrets, settings, tags};
+use commands::{
+    analytics as analytics_commands, cache, embedding as embedding_commands, folders, links, notes,
+    projects, research, secrets, settings, tags,
+};
 
 /// The full IPC surface, exposed for the bindings export test.
 /// Both `run` and codegen build from this one list so bindings can never
@@ -52,6 +59,12 @@ pub fn specta_builder() -> Builder<tauri::Wry> {
             links::link_remove,
             links::links_for_note,
             links::link_reject,
+            links::link_suggestions,
+            links::link_approve,
+            embedding_commands::embedding_status,
+            embedding_commands::embedding_set_model,
+            embedding_commands::embedding_reindex,
+            analytics_commands::analytics_status,
             settings::settings_get,
             settings::settings_update,
             secrets::api_key_set,
@@ -72,6 +85,7 @@ pub fn specta_builder() -> Builder<tauri::Wry> {
             research::ResearchStepEvent,
             research::ResearchResultEvent,
             research::ResearchStatusEvent,
+            links::LinkingSuggestionsEvent,
         ])
 }
 
@@ -101,18 +115,25 @@ pub fn run() {
                 .map_err(|err| format!("open database: {err}"))?;
 
             let (sidecar_tx, mut sidecar_rx) = tokio::sync::mpsc::unbounded_channel();
-            let sidecar = sidecar::SidecarManager::new(sidecar_tx);
+            let sidecar = sidecar::SidecarManager::new(sidecar_tx, data_dir.join("models"));
             let (research_tx, mut research_rx) =
                 tokio::sync::mpsc::unbounded_channel::<el_research::ResearchEvent>();
 
-            app.manage(state::AppState {
+            #[cfg(feature = "analytics")]
+            let analytics = analytics::open(&data_dir);
+
+            let app_state = state::AppState {
                 db,
                 sidecar,
                 research: state::ResearchRegistry::default(),
                 research_tx,
+                embed: state::EmbedQueue::default(),
+                #[cfg(feature = "analytics")]
+                analytics,
                 data_dir,
                 log_db_path,
-            });
+            };
+            app.manage(app_state.clone());
 
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
@@ -125,6 +146,12 @@ pub fn run() {
                 while let Some(event) = research_rx.recv().await {
                     forward_research_event(&app_handle, event);
                 }
+            });
+
+            // Keeps note vectors current; started here so it outlives commands.
+            let worker_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                embedding::run_worker(worker_handle, app_state).await;
             });
 
             tracing::info!("EndlessLi starting");

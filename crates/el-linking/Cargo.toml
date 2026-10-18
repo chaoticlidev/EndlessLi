@@ -7,7 +7,13 @@ description = "EndlessLi auto-linking orchestration (Phase 6)"
 
 [dependencies]
 el-core = { workspace = true }
+el-db = { workspace = true }
 serde = { workspace = true }
+sha2 = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
 
 [lints]
 workspace = true

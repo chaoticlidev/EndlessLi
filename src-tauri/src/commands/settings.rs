@@ -34,6 +34,7 @@ fn check_key(key: &str) -> AppResult<()> {
     const NAMESPACES: &[&str] = &[
         "llm.",
         "embedding.",
+        "linking.",
         "cache.",
         "budget.",
         "memory.",

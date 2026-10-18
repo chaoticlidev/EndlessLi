@@ -522,6 +522,7 @@ pub fn research_save_results(
         let _ = el_db::repo::research::set_result_selected(&conn, &result.id, true);
     }
     drop(conn);
+    state.embed.enqueue(note.id.clone());
     Ok(note)
 }
 

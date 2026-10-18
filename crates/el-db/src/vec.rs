@@ -166,6 +166,42 @@ pub fn delete_embedding(conn: &Connection, note_id: &str) -> AppResult<()> {
     Ok(())
 }
 
+/// Reads a note's stored vector back out of the embeddings table, or `None`
+/// when the note has no vector or the table was never initialized. Used by
+/// the auto-linking engine to query for neighbors without re-embedding.
+pub fn read_embedding(conn: &Connection, note_id: &str) -> AppResult<Option<Vec<f32>>> {
+    let exists: bool = conn
+        .query_row(
+            "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type = 'table' AND name = ?1",
+            [EMBEDDINGS_TABLE],
+            |row| row.get(0),
+        )
+        .map_err(|err| AppError::Database(err.to_string()))?;
+    if !exists {
+        return Ok(None);
+    }
+    let mut stmt = conn
+        .prepare(&format!(
+            "SELECT embedding FROM {EMBEDDINGS_TABLE} WHERE note_id = ?1"
+        ))
+        .map_err(|err| AppError::Database(err.to_string()))?;
+    let mut rows = stmt
+        .query([note_id])
+        .map_err(|err| AppError::Database(err.to_string()))?;
+    match rows
+        .next()
+        .map_err(|err| AppError::Database(err.to_string()))?
+    {
+        Some(row) => {
+            let bytes: Vec<u8> = row
+                .get(0)
+                .map_err(|err| AppError::Database(err.to_string()))?;
+            Ok(Some(decode_vector(&bytes)))
+        }
+        None => Ok(None),
+    }
+}
+
 /// Finds notes similar to `query`, excluding the note itself, existing links,
 /// and rejected suggestions. Only notes embedded with `model` participate, so
 /// results never mix embedding spaces. `max_distance` is a cosine-distance
@@ -255,6 +291,14 @@ fn encode_vector(vector: &[f32]) -> Vec<u8> {
         bytes.extend_from_slice(&value.to_ne_bytes());
     }
     bytes
+}
+
+/// Reverses [`encode_vector`] for a raw `sqlite-vec` blob.
+fn decode_vector(bytes: &[u8]) -> Vec<f32> {
+    bytes
+        .chunks_exact(4)
+        .map(|chunk| f32::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+        .collect()
 }
 
 fn setting_get(conn: &Connection, key: &str) -> AppResult<Option<String>> {

@@ -80,11 +80,14 @@ struct ManagerInner {
     stdin: tokio::sync::Mutex<Option<ChildStdin>>,
     pending: Mutex<HashMap<u64, oneshot::Sender<Result<Value, SidecarRpcError>>>>,
     status_tx: mpsc::UnboundedSender<SidecarStatus>,
+    // Where the sidecar caches downloaded model weights (persistent).
+    model_cache_dir: PathBuf,
 }
 
 impl SidecarManager {
-    /// Creates a stopped manager. `status_tx` receives every status change.
-    pub fn new(status_tx: mpsc::UnboundedSender<SidecarStatus>) -> Self {
+    /// Creates a stopped manager. `status_tx` receives every status change;
+    /// `model_cache_dir` is exported to the sidecar as its embedding cache.
+    pub fn new(status_tx: mpsc::UnboundedSender<SidecarStatus>, model_cache_dir: PathBuf) -> Self {
         Self {
             inner: Arc::new(ManagerInner {
                 restarts: AtomicU32::new(0),
@@ -95,6 +98,7 @@ impl SidecarManager {
                 stdin: tokio::sync::Mutex::new(None),
                 pending: Mutex::new(HashMap::new()),
                 status_tx,
+                model_cache_dir,
             }),
         }
     }
@@ -245,6 +249,12 @@ impl SidecarManager {
                 command
             }
         };
+        // Both launch plans cache model weights in the app data directory
+        // (fastembed otherwise defaults to the OS temp dir, which is not
+        // durable) and keep the Hugging Face symlink warning out of the log.
+        command
+            .env("ENDLESSLI_EMBED_CACHE_DIR", &self.inner.model_cache_dir)
+            .env("HF_HUB_DISABLE_SYMLINKS_WARNING", "1");
         let mut child = command
             .spawn()
             .map_err(|err| AppError::Internal(format!("spawn sidecar ({plan:?}): {err}")))?;
@@ -425,7 +435,7 @@ mod tests {
     #[test]
     fn disables_after_max_restarts() {
         let (tx, _rx) = mpsc::unbounded_channel();
-        let manager = SidecarManager::new(tx);
+        let manager = SidecarManager::new(tx, PathBuf::from("."));
         assert_eq!(manager.status(), SidecarStatus::Stopped);
         assert_eq!(manager.record_crash(), SidecarStatus::Restarting);
         assert_eq!(manager.record_crash(), SidecarStatus::Restarting);
