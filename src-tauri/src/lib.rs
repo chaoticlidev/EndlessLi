@@ -20,7 +20,7 @@ use tauri::{Emitter, Manager};
 use tauri_specta::{collect_commands, collect_events, Builder, Event as SpectaEvent};
 
 use commands::{
-    analytics as analytics_commands, cache, embedding as embedding_commands, folders, links, notes,
+    analytics as analytics_commands, cache, compression as compression_commands, embedding as embedding_commands, folders, links, notes,
     projects, research, secrets, settings, tags,
 };
 
@@ -80,6 +80,8 @@ pub fn specta_builder() -> Builder<tauri::Wry> {
             research::research_history,
             research::research_save_results,
             research::sidecar_status,
+            compression_commands::compression_start,
+            compression_commands::compression_save_outputs,
         ])
         .events(collect_events![
             research::ResearchStepEvent,

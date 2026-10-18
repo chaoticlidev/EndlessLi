@@ -1577,6 +1577,7 @@ dependencies = [
  "chrono",
  "el-analytics",
  "el-cache",
+ "el-compress",
  "el-core",
  "el-db",
  "el-linking",

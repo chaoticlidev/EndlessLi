@@ -109,7 +109,7 @@ export const commands = {
 	settingsGet: (key: string) => typedError<string | null, AppError>(__TAURI_INVOKE("settings_get", { key })),
 	/**  Writes one setting value (JSON), replacing any previous value. */
 	settingsUpdate: (key: string, value: string) => typedError<null, AppError>(__TAURI_INVOKE("settings_update", { key, value })),
-	/**  Stores (or replaces) a provider API key in the OS keychain. */
+	/**  Stores (or replaces) a provider API key. */
 	apiKeySet: (provider: string, key: string) => typedError<null, AppError>(__TAURI_INVOKE("api_key_set", { provider, key })),
 	/**  Removes a provider API key. Succeeds when none was stored. */
 	apiKeyDelete: (provider: string) => typedError<null, AppError>(__TAURI_INVOKE("api_key_delete", { provider })),
@@ -156,6 +156,8 @@ export const commands = {
 	researchSaveResults: (sessionId: string, title: string, projectId: string | null, folderId: string | null, resultIds: string[]) => typedError<Note, AppError>(__TAURI_INVOKE("research_save_results", { sessionId, title, projectId, folderId, resultIds })),
 	/**  Reports sidecar lifecycle state for diagnostics. */
 	sidecarStatus: () => typedError<string, AppError>(__TAURI_INVOKE("sidecar_status")),
+	compressionStart: (documents: CompressionDoc[], k: number | null, maxContextTokens: number | null) => typedError<CompressionOutput[], AppError>(__TAURI_INVOKE("compression_start", { documents, k, maxContextTokens })),
+	compressionSaveOutputs: (outputs: CompressionOutput[], projectId: string | null, folderId: string | null) => typedError<Note[], AppError>(__TAURI_INVOKE("compression_save_outputs", { outputs, projectId, folderId })),
 };
 
 /** Events */
@@ -198,6 +200,17 @@ export type AppError =
 export type CacheStats = {
 	entries: number,
 	bytes: number,
+};
+
+export type CompressionDoc = {
+	doc_ref: string,
+	text: string,
+};
+
+export type CompressionOutput = {
+	title: string,
+	content: string,
+	sources: string[],
 };
 
 /**

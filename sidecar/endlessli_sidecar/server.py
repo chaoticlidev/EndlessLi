@@ -16,6 +16,9 @@ from typing import Any, Callable
 from . import __version__
 from .clip import clip_url
 from .embed import MAX_TEXTS, EmbeddingUnavailable, embed_texts, model_info
+from .extract import extract_pdf
+from .chunk import chunk_documents
+from .cluster import kmeans
 from .search import PROVIDERS, ProviderContext, search_with_fallback
 
 #: JSON-RPC error codes used by this server.
@@ -147,6 +150,62 @@ def method_embed_texts(params: Any) -> dict[str, Any]:
         raise SidecarError(f"embedding failed: {exc}") from exc
 
 
+def method_pdf_extract(params: Any) -> dict[str, Any]:
+    if not isinstance(params, dict):
+        raise ParamError("params must be an object")
+    _require(params, "path")
+    path = params["path"]
+    if not isinstance(path, str) or not path.strip():
+        raise ParamError("path must be a non-empty string")
+    try:
+        return extract_pdf(path.strip())
+    except Exception as exc:  # noqa: BLE001
+        raise SidecarError(f"pdf extract failed: {exc}") from exc
+
+
+def method_chunk_documents(params: Any) -> dict[str, Any]:
+    if not isinstance(params, dict):
+        raise ParamError("params must be an object")
+    _require(params, "documents")
+    documents = params["documents"]
+    if not isinstance(documents, list):
+        raise ParamError("documents must be a list")
+    chunk_size = params.get("chunk_size", 800)
+    overlap = params.get("overlap", 100)
+    if not isinstance(chunk_size, int) or chunk_size < 1:
+        raise ParamError("chunk_size must be a positive integer")
+    if not isinstance(overlap, int) or overlap < 0:
+        raise ParamError("overlap must be a non-negative integer")
+    try:
+        chunks = chunk_documents(documents, chunk_size, overlap)
+    except ValueError as exc:
+        raise ParamError(str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise SidecarError(f"chunking failed: {exc}") from exc
+    return {"chunks": chunks}
+
+
+def method_cluster_kmeans(params: Any) -> dict[str, Any]:
+    if not isinstance(params, dict):
+        raise ParamError("params must be an object")
+    _require(params, "embeddings", "k")
+    embeddings = params["embeddings"]
+    if not isinstance(embeddings, list) or not embeddings:
+        raise ParamError("embeddings must be a non-empty list")
+    k = params["k"]
+    if not isinstance(k, int) or k < 1:
+        raise ParamError("k must be a positive integer")
+    seed = params.get("seed", 42)
+    if not isinstance(seed, int):
+        raise ParamError("seed must be an integer")
+    try:
+        return kmeans(embeddings, k, seed)
+    except ValueError as exc:
+        raise ParamError(str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise SidecarError(f"clustering failed: {exc}") from exc
+
+
 METHODS: dict[str, Callable[[Any], Any]] = {
     "health.check": method_health_check,
     "search.providers": method_search_providers,
@@ -154,6 +213,9 @@ METHODS: dict[str, Callable[[Any], Any]] = {
     "clip.url": method_clip_url,
     "embed.model_info": method_embed_model_info,
     "embed.texts": method_embed_texts,
+    "pdf.extract": method_pdf_extract,
+    "chunk.documents": method_chunk_documents,
+    "cluster.kmeans": method_cluster_kmeans,
 }
 
 

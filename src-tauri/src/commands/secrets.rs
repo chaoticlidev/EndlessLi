@@ -34,20 +34,75 @@ pub struct TokenSummary {
     pub budget_warning: Option<String>,
 }
 
-/// Stores (or replaces) a provider API key in the OS keychain.
+/// Fallback settings key holding a provider key when the OS keychain is
+/// unavailable. Redundant with the keychain: we always write both so a
+/// keychain read failure never locks the user out.
+fn fallback_key(provider: &str) -> String {
+    format!("secret.{}", provider)
+}
+
+/// Reports whether a key is available from either the keychain or the
+/// local fallback store.
+pub fn has_api_key(state: &AppState, provider: &str) -> AppResult<bool> {
+    if el_security::has_api_key(provider).unwrap_or(false) {
+        return Ok(true);
+    }
+    let conn = state.db.connect()?;
+    let value = el_db::repo::cache::get_setting(&conn, &fallback_key(provider))?;
+    Ok(value.map(|v| !v.trim().is_empty()).unwrap_or(false))
+}
+
+/// Stores a key in the keychain and the local fallback store.
+pub fn set_api_key(state: &AppState, provider: &str, key: &str) -> AppResult<()> {
+    el_security::secrets::check_provider(provider)?;
+    if key.trim().is_empty() {
+        return Err(AppError::InvalidInput("API key must not be blank".to_string()));
+    }
+    let _ = el_security::set_api_key(provider, key);
+    let conn = state.db.connect()?;
+    el_db::repo::cache::set_setting(&conn, &fallback_key(provider), key)?;
+    Ok(())
+}
+
+/// Removes a key from both stores.
+pub fn delete_api_key(state: &AppState, provider: &str) -> AppResult<()> {
+    let _ = el_security::delete_api_key(provider);
+    let conn = state.db.connect()?;
+    el_db::repo::cache::set_setting(&conn, &fallback_key(provider), "")?;
+    Ok(())
+}
+
+/// Loads a key, preferring the OS keychain and falling back to the local
+/// store when the keychain is unavailable or empty.
+pub fn load_api_key(state: &AppState, provider: &str) -> AppResult<String> {
+    if let Ok(key) = el_security::load_api_key(provider) {
+        if !key.trim().is_empty() {
+            return Ok(key);
+        }
+    }
+    let conn = state.db.connect()?;
+    if let Some(key) = el_db::repo::cache::get_setting(&conn, &fallback_key(provider))? {
+        if !key.trim().is_empty() {
+            return Ok(key);
+        }
+    }
+    Err(AppError::InvalidInput(format!(
+        "no API key stored for {provider}; add one in Settings"
+    )))
+}
+
+/// Stores (or replaces) a provider API key.
 #[tauri::command]
 #[specta::specta]
 pub fn api_key_set(state: State<'_, AppState>, provider: String, key: String) -> AppResult<()> {
-    let _ = state;
-    el_security::set_api_key(&provider, &key)
+    set_api_key(&state, &provider, &key)
 }
 
 /// Removes a provider API key. Succeeds when none was stored.
 #[tauri::command]
 #[specta::specta]
 pub fn api_key_delete(state: State<'_, AppState>, provider: String) -> AppResult<()> {
-    let _ = state;
-    el_security::delete_api_key(&provider)
+    delete_api_key(&state, &provider)
 }
 
 /// Reports which providers have a key stored, without revealing keys.
@@ -60,7 +115,7 @@ pub fn api_key_status(state: State<'_, AppState>) -> AppResult<Vec<ProviderKeySt
         .map(|provider| {
             Ok(ProviderKeyStatus {
                 provider: provider.to_string(),
-                configured: el_security::has_api_key(provider)?,
+                configured: has_api_key(&state, provider)?,
             })
         })
         .collect()
@@ -76,7 +131,7 @@ pub async fn api_key_test(
     model: Option<String>,
 ) -> AppResult<el_llm::TestOutcome> {
     el_security::secrets::check_provider(&provider)?;
-    let key = el_security::load_api_key(&provider)?;
+    let key = load_api_key(&state, &provider)?;
     let conn = state.db.connect()?;
     let settings_model = el_db::repo::cache::get_setting(&conn, "llm.model")?;
     let model = model

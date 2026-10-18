@@ -38,6 +38,7 @@ el-research = { workspace = true }
 el-linking = { workspace = true }
 el-security = { workspace = true }
 el-analytics = { workspace = true }
+el-compress = { workspace = true }
 
 [features]
 default = ["analytics"]

@@ -8,6 +8,7 @@
 
 pub mod analytics;
 pub mod cache;
+pub mod compression;
 pub mod embedding;
 pub mod folders;
 pub mod links;
