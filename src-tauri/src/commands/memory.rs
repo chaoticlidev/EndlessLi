@@ -15,6 +15,13 @@ pub struct MemoryContext {
 
 #[tauri::command]
 #[specta::specta]
+pub fn memory_list_forgotten(state: State<'_, AppState>) -> AppResult<Vec<MemoryEntry>> {
+    let conn = state.db.connect()?;
+    el_db::repo::memory::list_forgotten(&conn)
+}
+
+#[tauri::command]
+#[specta::specta]
 pub fn memory_list(state: State<'_, AppState>, project_id: Option<String>) -> AppResult<Vec<MemoryEntry>> {
     let conn = state.db.connect()?;
     if let Some(pid) = project_id {
@@ -58,6 +65,13 @@ pub fn memory_update(state: State<'_, AppState>, id: String, content: String) ->
 pub fn memory_forget(state: State<'_, AppState>, id: String) -> AppResult<()> {
     let conn = state.db.connect()?;
     el_db::repo::memory::forget(&conn, &id)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn memory_restore(state: State<'_, AppState>, id: String) -> AppResult<()> {
+    let conn = state.db.connect()?;
+    el_db::repo::memory::restore(&conn, &id)
 }
 
 #[tauri::command]

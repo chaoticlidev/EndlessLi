@@ -320,6 +320,96 @@ export function useKeyStatus() {
   });
 }
 
+export function useMemoryList(projectId: string | null) {
+  return useQuery({
+    queryKey: ["memory-list", projectId],
+    queryFn: () => call(() => commands.memoryList(projectId)),
+  });
+}
+
+export function useForgottenMemories() {
+  return useQuery({
+    queryKey: ["memory-forgotten"],
+    queryFn: () => call(() => commands.memoryListForgotten()),
+  });
+}
+
+export function useMemoryEnabled() {
+  return useQuery({
+    queryKey: ["memory-enabled"],
+    queryFn: () => call(() => commands.memoryIsEnabled()),
+  });
+}
+
+export function useCreateMemory() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (args: {
+      memoryType: string;
+      projectId: string | null;
+      content: string;
+      expiresAt: number | null;
+    }) =>
+      call(() =>
+        commands.memoryCreate(
+          args.memoryType,
+          args.projectId,
+          args.content,
+          args.expiresAt,
+        ),
+      ),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["memory-list"] });
+      void client.invalidateQueries({ queryKey: ["memory-forgotten"] });
+    },
+  });
+}
+
+export function useForgetMemory() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => call(() => commands.memoryForget(id)),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["memory-list"] });
+      void client.invalidateQueries({ queryKey: ["memory-forgotten"] });
+    },
+  });
+}
+
+export function useRestoreMemory() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => call(() => commands.memoryRestore(id)),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["memory-list"] });
+      void client.invalidateQueries({ queryKey: ["memory-forgotten"] });
+    },
+  });
+}
+
+export function useDeleteMemory() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => call(() => commands.memoryDelete(id)),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["memory-list"] });
+      void client.invalidateQueries({ queryKey: ["memory-forgotten"] });
+    },
+  });
+}
+
+export function useSetMemoryEnabled() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) =>
+      call(() => commands.memorySetEnabled(enabled)),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["memory-enabled"] });
+      void client.invalidateQueries({ queryKey: ["memory-list"] });
+    },
+  });
+}
+
 export function useSetKey() {
   const client = useQueryClient();
   return useMutation({

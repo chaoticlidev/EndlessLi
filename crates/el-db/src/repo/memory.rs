@@ -78,6 +78,22 @@ pub fn list_global(conn: &Connection) -> AppResult<Vec<MemoryEntry>> {
     list_scope(conn, "type = 'global'", None)
 }
 
+/// Lists inactive (forgotten) memories, newest-first.
+pub fn list_forgotten(conn: &Connection) -> AppResult<Vec<MemoryEntry>> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, type, project_id, content, source, created_at, expires_at, is_active
+             FROM memory_entries WHERE is_active = 0 ORDER BY created_at DESC",
+        )
+        .map_err(map_db)?;
+    let rows = stmt.query_map([], row_to_entry).map_err(map_db)?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.map_err(map_db)?);
+    }
+    Ok(out)
+}
+
 /// Lists active memories for one project, oldest-first.
 pub fn list_for_project(conn: &Connection, project_id: &str) -> AppResult<Vec<MemoryEntry>> {
     list_scope(
@@ -138,6 +154,20 @@ pub fn get_entry(conn: &Connection, id: &str) -> AppResult<Option<MemoryEntry>> 
         Some(row) => Ok(Some(row_to_entry(row).map_err(map_db)?)),
         None => Ok(None),
     }
+}
+
+/// Restores a soft-deleted entry.
+pub fn restore(conn: &Connection, id: &str) -> AppResult<()> {
+    let affected = conn
+        .execute(
+            "UPDATE memory_entries SET is_active = 1 WHERE id = ?1",
+            [id],
+        )
+        .map_err(map_db)?;
+    if affected == 0 {
+        return Err(AppError::NotFound(format!("memory {id}")));
+    }
+    Ok(())
 }
 
 /// Soft-deletes an entry (`/forget`). The row stays for audit and restore.

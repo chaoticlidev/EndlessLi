@@ -92,9 +92,11 @@ export const commands = {
 	 */
 	linkApprove: (a: string, b: string, similarity: number | null) => typedError<NoteLink, AppError>(__TAURI_INVOKE("link_approve", { a, b, similarity })),
 	memoryList: (projectId: string | null) => typedError<MemoryEntry[], AppError>(__TAURI_INVOKE("memory_list", { projectId })),
+	memoryListForgotten: () => typedError<MemoryEntry[], AppError>(__TAURI_INVOKE("memory_list_forgotten")),
 	memoryCreate: (memoryType: string, projectId: string | null, content: string, expiresAt: number | null) => typedError<MemoryEntry, AppError>(__TAURI_INVOKE("memory_create", { memoryType, projectId, content, expiresAt })),
 	memoryUpdate: (id: string, content: string) => typedError<MemoryEntry, AppError>(__TAURI_INVOKE("memory_update", { id, content })),
 	memoryForget: (id: string) => typedError<null, AppError>(__TAURI_INVOKE("memory_forget", { id })),
+	memoryRestore: (id: string) => typedError<null, AppError>(__TAURI_INVOKE("memory_restore", { id })),
 	memoryDelete: (id: string) => typedError<null, AppError>(__TAURI_INVOKE("memory_delete", { id })),
 	memorySuggestions: () => typedError<MemorySuggestion[], AppError>(__TAURI_INVOKE("memory_suggestions")),
 	memoryAcceptSuggestion: (id: string) => typedError<MemoryEntry, AppError>(__TAURI_INVOKE("memory_accept_suggestion", { id })),

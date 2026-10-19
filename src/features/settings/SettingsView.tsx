@@ -19,9 +19,18 @@ import {
   useDeleteKey,
   useEmbeddingStatus,
   useKeyStatus,
+  useMemoryEnabled,
+  useMemoryList,
+  useForgottenMemories,
+  useCreateMemory,
+  useForgetMemory,
+  useRestoreMemory,
+  useDeleteMemory,
+  useSetMemoryEnabled,
   useReindexEmbeddings,
   useSetEmbeddingModel,
   useSetKey,
+  useProjects,
   useSetSetting,
   useSetting,
   useTokenSummary,
@@ -550,6 +559,193 @@ function AnalyticsPanel() {
 }
 
 /** Settings tab: providers, keys, models, embedding, cache, budgets. */
+function ProjectMemoryList({
+  project,
+  renderMemory,
+}: {
+  project: any;
+  renderMemory: (memory: any) => any;
+}) {
+  const list = useMemoryList(project.id);
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-xs font-medium">{project.name}</span>
+      {(list.data ?? []).length === 0 && (
+          <span className="text-xs text-neutral-500">None</span>
+        )}
+        {(list.data ?? []).map(renderMemory)}
+    </div>
+  );
+}
+
+function MemoryPanel() {
+  const projects = useProjects(true).data ?? [];
+  const globalMemories = useMemoryList(null);
+  const forgotten = useForgottenMemories();
+  const enabledQuery = useMemoryEnabled();
+  const setEnabled = useSetMemoryEnabled();
+  const createMemory = useCreateMemory();
+  const forgetMemory = useForgetMemory();
+  const restoreMemory = useRestoreMemory();
+  const deleteMemory = useDeleteMemory();
+
+  const [selectedProject, setSelectedProject] = useState<string | null>(null);
+  const [newContent, setNewContent] = useState("");
+  const [newScope, setNewScope] = useState<"global" | "project">("global");
+  const [showIds, setShowIds] = useState(false);
+
+  const enabled = enabledQuery.data ?? true;
+
+  async function handleCreate() {
+    if (!newContent.trim()) return;
+    await createMemory.mutateAsync({
+      memoryType: newScope,
+      projectId: newScope === "project" ? selectedProject : null,
+      content: newContent.trim(),
+      expiresAt: null,
+    });
+    setNewContent("");
+  }
+
+  function renderMemory(memory: any) {
+    return (
+      <div key={memory.id} className="flex items-center gap-2 text-sm">
+        <span className="flex-1">{memory.content}</span>
+        {showIds && (
+          <span className="text-xs text-neutral-400">{memory.id}</span>
+        )}
+        <button
+          type="button"
+          onClick={() => {
+            if (window.confirm("Forget this memory temporarily?")) {
+              void forgetMemory.mutate(memory.id);
+            }
+          }}
+          className="text-xs text-neutral-500"
+        >
+          Forget
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            if (window.confirm("Delete this memory permanently?")) {
+              void deleteMemory.mutate(memory.id);
+            }
+          }}
+          className="text-xs text-red-500"
+        >
+          Delete
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={() => void setEnabled.mutate(!enabled)}
+        />
+        Memory enabled
+      </label>
+      <label className="flex items-center gap-2 text-xs text-neutral-500">
+        <input
+          type="checkbox"
+          checked={showIds}
+          onChange={() => setShowIds((v) => !v)}
+        />
+        Show memory IDs
+      </label>
+      <div className="flex flex-col gap-2">
+        <span className="text-xs font-medium">New memory</span>
+        <select
+          value={newScope}
+          onChange={(e) => setNewScope(e.target.value as "global" | "project")}
+          className="rounded-md border border-neutral-300 bg-transparent px-2 py-1 text-sm dark:border-neutral-600"
+        >
+          <option value="global">Global</option>
+          <option value="project">Project</option>
+        </select>
+        {newScope === "project" && (
+          <select
+            value={selectedProject ?? ""}
+            onChange={(e) => setSelectedProject(e.target.value || null)}
+            className="rounded-md border border-neutral-300 bg-transparent px-2 py-1 text-sm dark:border-neutral-600"
+          >
+            <option value="">Select project</option>
+            {projects.map((project) => (
+              <option key={project.id} value={project.id}>
+                {project.name} ({project.id})
+              </option>
+            ))}
+          </select>
+        )}
+        <textarea
+          value={newContent}
+          onChange={(e) => setNewContent(e.target.value)}
+          placeholder="Memory content"
+          className="rounded-md border border-neutral-300 bg-transparent px-2 py-1 text-sm dark:border-neutral-600"
+        />
+        <button
+          type="button"
+          onClick={() => void handleCreate()}
+          className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
+        >
+          Save memory
+        </button>
+      </div>
+      <div className="flex flex-col gap-1">
+        <span className="text-xs font-medium">Global memories</span>
+        {(globalMemories.data ?? []).length === 0 && (
+          <span className="text-xs text-neutral-500">None</span>
+        )}
+        {(globalMemories.data ?? []).map(renderMemory)}
+      </div>
+      {projects.map((project) => (
+        <ProjectMemoryList
+          key={project.id}
+          project={project}
+          renderMemory={renderMemory}
+        />
+      ))}
+      <div className="flex flex-col gap-1">
+        <span className="text-xs font-medium">Forgotten memories</span>
+        {(forgotten.data ?? []).length === 0 && (
+          <span className="text-xs text-neutral-500">None</span>
+        )}
+        {(forgotten.data ?? []).map((memory) => (
+          <div key={memory.id} className="flex items-center gap-2 text-sm">
+            <span className="flex-1">{memory.content}</span>
+            {showIds && (
+              <span className="text-xs text-neutral-400">{memory.id}</span>
+            )}
+            <button
+              type="button"
+              onClick={() => void restoreMemory.mutate(memory.id)}
+              className="text-xs text-neutral-500"
+            >
+              Restore
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm("Delete this memory permanently?")) {
+                  void deleteMemory.mutate(memory.id);
+                }
+              }}
+              className="text-xs text-red-500"
+            >
+              Delete
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function SettingsView() {
   const { data: provider } = useSetting("llm.provider");
   const setSetting = useSetSetting();
@@ -557,7 +753,7 @@ export function SettingsView() {
 
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col gap-3 overflow-y-auto pb-4">
-      <Section title="Language model">
+      <Section title="Language Model">
         <label className="flex flex-col gap-1 text-sm">
           <span className="font-medium">Provider</span>
           <select
@@ -594,7 +790,7 @@ export function SettingsView() {
         )}
       </Section>
 
-      <Section title="API keys">
+      <Section title="API Keys">
         <ProviderKeys />
       </Section>
 
@@ -622,8 +818,12 @@ export function SettingsView() {
         <CacheManager />
       </Section>
 
-      <Section title="Token budgets">
+      <Section title="Token Budgets">
         <Budgets />
+      </Section>
+
+      <Section title="Memories">
+        <MemoryPanel />
       </Section>
     </div>
   );

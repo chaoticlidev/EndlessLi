@@ -3,6 +3,7 @@ import { CornerDownLeft, FilePlus, FolderPlus } from "lucide-react";
 import { useUi } from "../stores/ui";
 import type { TabId } from "../stores/ui";
 import { useCreateNote, useCreateProject, useNoteSearch } from "../ipc/queries";
+import { commands } from "../ipc/bindings";
 
 interface PaletteAction {
   id: string;
@@ -23,6 +24,7 @@ export function CommandPalette() {
 
   const [text, setText] = useState("");
   const [index, setIndex] = useState(0);
+  const [memoryModal, setMemoryModal] = useState<string[] | null>(null);
   const createNote = useCreateNote();
   const createProject = useCreateProject();
   const { data: matches } = useNoteSearch(text.trim());
@@ -102,6 +104,63 @@ export function CommandPalette() {
           ),
       });
     }
+    const trimmed = text.trim();
+    if (trimmed.startsWith("/")) {
+      const lower = trimmed.toLowerCase();
+      if (lower.startsWith("/remember ")) {
+        const content = trimmed.slice(10).trim();
+        if (content) {
+          list.push({
+            id: "memory-remember",
+            label: `Remember: ${content}`,
+            run: () => {
+              void commands.memoryCreate("global", null, content, null);
+            },
+          });
+        }
+      } else if (lower.startsWith("/project remember ")) {
+        const content = trimmed.slice(18).trim();
+        if (content) {
+          list.push({
+            id: "memory-project-remember",
+            label: `Project remember: ${content}`,
+            hint: "prompts for project id",
+            run: () => {
+              const projectId = window.prompt("Project ID:");
+              if (projectId?.trim()) {
+                void commands.memoryCreate("project", projectId.trim(), content, null);
+              }
+            },
+          });
+        }
+      } else if (lower.startsWith("/forget ")) {
+        const id = trimmed.slice(8).trim();
+        if (id) {
+          list.push({
+            id: "memory-forget",
+            label: `Forget memory ${id}`,
+            run: () => {
+              void commands.memoryForget(id);
+            },
+          });
+        }
+      } else if (lower === "/showmem") {
+        list.push({
+          id: "memory-show",
+          label: "Show memories",
+          run: () => {
+            void commands.memoryList(null).then((result) => {
+              if (result.status === "ok") {
+                setMemoryModal(
+                  result.data.map((m) => m.content) || ["(none)"],
+                );
+                setPaletteOpen(false);
+              }
+            });
+          },
+        });
+      }
+    }
     return list;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text]);
@@ -128,6 +187,36 @@ export function CommandPalette() {
       setActiveTab("knowledge");
     }
     setPaletteOpen(false);
+  }
+
+  if (memoryModal) {
+    return (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
+        onClick={() => setMemoryModal(null)}
+      >
+        <div
+          className="w-full max-w-md rounded-lg border border-neutral-300 bg-white p-4 shadow-xl dark:border-neutral-700 dark:bg-neutral-900"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <h2 className="mb-2 text-sm font-semibold">Memories</h2>
+          <ul className="flex flex-col gap-1">
+            {memoryModal.map((content, index) => (
+              <li key={index} className="text-sm">
+                {content}
+              </li>
+            ))}
+          </ul>
+          <button
+            type="button"
+            onClick={() => setMemoryModal(null)}
+            className="mt-3 rounded-md border border-neutral-300 px-2 py-1 text-sm"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    );
   }
 
   if (!paletteOpen) return null;
