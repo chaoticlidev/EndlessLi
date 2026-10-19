@@ -91,6 +91,53 @@ export const commands = {
 	 *  `auto_approved`.
 	 */
 	linkApprove: (a: string, b: string, similarity: number | null) => typedError<NoteLink, AppError>(__TAURI_INVOKE("link_approve", { a, b, similarity })),
+	/**  Lists items with optional type, tag, and source filters (no query). */
+	libraryList: (itemType: string | null, tagId: string | null, source: string | null, limit: number) => typedError<LibraryItem[], AppError>(__TAURI_INVOKE("library_list", { itemType, tagId, source, limit })),
+	/**  Full-text searches titles and extracted content, with the same filters. */
+	librarySearch: (query: string, itemType: string | null, tagId: string | null, source: string | null, limit: number) => typedError<LibraryItem[], AppError>(__TAURI_INVOKE("library_search", { query, itemType, tagId, source, limit })),
+	/**  Fetches an item with its tags. */
+	libraryGet: (id: string) => typedError<{
+	item: LibraryItem,
+	tags: Tag[],
+} | null, AppError>(__TAURI_INVOKE("library_get", { id })),
+	/**  Creates a library item from user-entered metadata. */
+	libraryCreate: (input: NewLibraryItem) => typedError<LibraryItem, AppError>(__TAURI_INVOKE("library_create", { input })),
+	/**  Updates an item's editable metadata. `None` fields are left unchanged. */
+	libraryUpdate: (id: string, patch: UpdateLibraryItem) => typedError<LibraryItem, AppError>(__TAURI_INVOKE("library_update", { id, patch })),
+	/**  Deletes an item and its managed file copy (never the original path). */
+	libraryDelete: (id: string) => typedError<null, AppError>(__TAURI_INVOKE("library_delete", { id })),
+	/**  Totals for the categories panel: overall count plus per-type counts. */
+	libraryStats: () => typedError<LibraryStats, AppError>(__TAURI_INVOKE("library_stats")),
+	/**  Distinct source names for the categories panel filter. */
+	librarySources: () => typedError<string[], AppError>(__TAURI_INVOKE("library_sources")),
+	/**  Attaches a tag to an item. Repeat calls are harmless. */
+	libraryAssignTag: (itemId: string, tagId: string) => typedError<null, AppError>(__TAURI_INVOKE("library_assign_tag", { itemId, tagId })),
+	/**  Detaches a tag from an item. */
+	libraryUnassignTag: (itemId: string, tagId: string) => typedError<null, AppError>(__TAURI_INVOKE("library_unassign_tag", { itemId, tagId })),
+	/**  Links an item to an existing note, or unlinks it with `None`. */
+	libraryLinkNote: (itemId: string, noteId: string | null) => typedError<LibraryItem, AppError>(__TAURI_INVOKE("library_link_note", { itemId, noteId })),
+	/**
+	 *  Creates an `import`-authored note from an item's metadata and text, then
+	 *  links the two. The item keeps its own file copy.
+	 */
+	libraryCreateNote: (itemId: string, projectId: string | null, folderId: string | null) => typedError<Note, AppError>(__TAURI_INVOKE("library_create_note", { itemId, projectId, folderId })),
+	/**
+	 *  Opens the native file picker and returns the chosen absolute paths.
+	 *  Returns an empty list when the user cancels.
+	 */
+	libraryPickFiles: () => typedError<string[], AppError>(__TAURI_INVOKE("library_pick_files")),
+	/**
+	 *  Copies the given files into the managed library directory, extracts text,
+	 *  and creates one item per file. Already-imported paths still copy (each
+	 *  import is a distinct item); failures are reported per file, not fatal.
+	 */
+	libraryImportFiles: (paths: string[]) => typedError<LibraryImportResult, AppError>(__TAURI_INVOKE("library_import_files", { paths })),
+	/**
+	 *  Sends selected research source results to the Library in one action.
+	 *  Full page text is reused from the research clip cache when available,
+	 *  falling back to the stored snippet. Items with a known URL are deduped.
+	 */
+	libraryAddResearchSources: (sessionId: string, resultIds: string[]) => typedError<LibraryItem[], AppError>(__TAURI_INVOKE("library_add_research_sources", { sessionId, resultIds })),
 	memoryList: (projectId: string | null) => typedError<MemoryEntry[], AppError>(__TAURI_INVOKE("memory_list", { projectId })),
 	memoryListForgotten: () => typedError<MemoryEntry[], AppError>(__TAURI_INVOKE("memory_list_forgotten")),
 	memoryCreate: (memoryType: string, projectId: string | null, content: string, expiresAt: number | null) => typedError<MemoryEntry, AppError>(__TAURI_INVOKE("memory_create", { memoryType, projectId, content, expiresAt })),
@@ -254,6 +301,45 @@ export type FolderNode = {
 	children: FolderNode[],
 };
 
+/**  Outcome of an import: items created/kept plus per-file error messages. */
+export type LibraryImportResult = {
+	items: LibraryItem[],
+	errors: string[],
+};
+
+/**  An archived source: PDF, article, book, video, dataset, podcast, or paper. */
+export type LibraryItem = {
+	id: string,
+	item_type: string,
+	title: string,
+	authors: string | null,
+	url: string | null,
+	source: string | null,
+	publication_date: string | null,
+	content: string | null,
+	file_path: string | null,
+	note_id: string | null,
+	created_at: number,
+};
+
+/**  A library item with its tags, for the detail drawer. */
+export type LibraryItemDetail = {
+	item: LibraryItem,
+	tags: Tag[],
+};
+
+/**  Item totals for the Library categories panel. */
+export type LibraryStats = {
+	total: number,
+	by_type: LibraryTypeCount[],
+};
+
+/**  One row of the Library categories panel. */
+export type LibraryTypeCount = {
+	item_type: string,
+	count: number,
+};
+
 /**
  *  One auto-linking candidate shown in the approval panel. `similarity` is
  *  cosine similarity (1.0 identical), derived from the vector distance.
@@ -307,6 +393,18 @@ export type NewFolder = {
 	name: string,
 	project_id: string,
 	parent_id: string | null,
+};
+
+/**  Fields accepted when creating a library item. */
+export type NewLibraryItem = {
+	item_type: string,
+	title: string,
+	authors: string | null,
+	url: string | null,
+	source: string | null,
+	publication_date: string | null,
+	content: string | null,
+	file_path: string | null,
 };
 
 /**  Fields accepted when creating a note. */
@@ -479,6 +577,21 @@ export type TokenSummary = {
 	daily_limit: number,
 	monthly_limit: number,
 	budget_warning: string | null,
+};
+
+/**
+ *  Fields that may change on library item update. `None` means "leave as is"
+ *  (same JSON reasoning as `UpdateNote`).
+ */
+export type UpdateLibraryItem = {
+	title: string | null,
+	authors: string | null,
+	url: string | null,
+	source: string | null,
+	publication_date: string | null,
+	content: string | null,
+	file_path: string | null,
+	note_id: string | null,
 };
 
 /**

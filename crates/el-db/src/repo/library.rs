@@ -136,6 +136,9 @@ pub fn update(conn: &Connection, id: &str, patch: &UpdateLibraryItem) -> AppResu
     if let Some(source) = &patch.source {
         item.source = Some(source.clone());
     }
+    if let Some(publication_date) = &patch.publication_date {
+        item.publication_date = Some(publication_date.clone());
+    }
     if let Some(content) = &patch.content {
         item.content = Some(content.clone());
     }
@@ -148,12 +151,13 @@ pub fn update(conn: &Connection, id: &str, patch: &UpdateLibraryItem) -> AppResu
     let affected = conn
         .execute(
             "UPDATE library_items SET title = ?1, authors = ?2, url = ?3, source = ?4,
-             content = ?5, file_path = ?6, note_id = ?7 WHERE id = ?8",
+             publication_date = ?5, content = ?6, file_path = ?7, note_id = ?8 WHERE id = ?9",
             rusqlite::params![
                 item.title,
                 item.authors,
                 item.url,
                 item.source,
+                item.publication_date,
                 item.content,
                 item.file_path,
                 item.note_id,
@@ -181,18 +185,149 @@ pub fn delete(conn: &Connection, id: &str) -> AppResult<()> {
 /// Full-text search over item titles and extracted content. The query is
 /// wrapped as an FTS5 phrase so arbitrary input cannot cause syntax errors.
 pub fn search(conn: &Connection, query: &str, limit: usize) -> AppResult<Vec<LibraryItem>> {
-    let phrase = format!("\"{}\"", query.replace('"', ""));
+    search_filtered(conn, Some(query), None, None, None, limit)
+}
+
+/// Lists or searches items with any combination of query, type, tag, and
+/// source filters.
+///
+/// An empty/whitespace `query` lists newest-first; otherwise results are
+/// ranked by FTS relevance. The query is wrapped as an FTS5 phrase (quotes
+/// stripped) so arbitrary user input can never produce a syntax error. Type
+/// is validated against the CHECK vocabulary; tag and source are exact-match
+/// filters. Every value is bound, so the dynamically built SQL is safe.
+pub fn search_filtered(
+    conn: &Connection,
+    query: Option<&str>,
+    item_type: Option<&str>,
+    tag_id: Option<&str>,
+    source: Option<&str>,
+    limit: usize,
+) -> AppResult<Vec<LibraryItem>> {
+    let query = query.map(str::trim).filter(|value| !value.is_empty());
+    if let Some(item_type) = item_type {
+        check_enum(item_type, LIBRARY_TYPE_VALUES, "type")?;
+    }
+
     let prefixed = format!("i.{}", COLUMNS.replace(", ", ", i."));
+    let mut sql = format!("SELECT {prefixed} FROM library_items i");
+    if tag_id.is_some() {
+        sql.push_str(" JOIN library_item_tags lit ON lit.item_id = i.id");
+    }
+    if query.is_some() {
+        sql.push_str(" JOIN library_fts f ON f.rowid = i.rowid");
+    }
+
+    let mut wheres: Vec<&str> = Vec::new();
+    if query.is_some() {
+        wheres.push("library_fts MATCH ?");
+    }
+    if item_type.is_some() {
+        wheres.push("i.type = ?");
+    }
+    if tag_id.is_some() {
+        wheres.push("lit.tag_id = ?");
+    }
+    if source.is_some() {
+        wheres.push("i.source = ?");
+    }
+    if !wheres.is_empty() {
+        sql.push_str(" WHERE ");
+        sql.push_str(&wheres.join(" AND "));
+    }
+    if query.is_some() {
+        sql.push_str(" ORDER BY rank");
+    } else {
+        sql.push_str(" ORDER BY i.created_at DESC");
+    }
+    sql.push_str(" LIMIT ?");
+
+    let mut binds: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+    if let Some(query) = query {
+        binds.push(Box::new(format!("\"{}\"", query.replace('"', ""))));
+    }
+    if let Some(item_type) = item_type {
+        binds.push(Box::new(item_type.to_string()));
+    }
+    if let Some(tag_id) = tag_id {
+        binds.push(Box::new(tag_id.to_string()));
+    }
+    if let Some(source) = source {
+        binds.push(Box::new(source.to_string()));
+    }
+    binds.push(Box::new(limit as i64));
+
+    let mut stmt = conn.prepare(&sql).map_err(map_db)?;
+    let bind_refs: Vec<&dyn rusqlite::ToSql> = binds.iter().map(|value| value.as_ref()).collect();
+    collect_items(&mut stmt, &bind_refs)
+}
+
+/// Counts items per type, for the Library categories panel.
+pub fn type_counts(conn: &Connection) -> AppResult<Vec<(String, i64)>> {
+    let mut stmt = conn
+        .prepare("SELECT type, COUNT(*) FROM library_items GROUP BY type")
+        .map_err(map_db)?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })
+        .map_err(map_db)?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.map_err(map_db)?);
+    }
+    Ok(out)
+}
+
+/// Distinct, non-empty source names, alphabetically (case-insensitive).
+pub fn sources(conn: &Connection) -> AppResult<Vec<String>> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT DISTINCT source FROM library_items
+             WHERE source IS NOT NULL AND TRIM(source) != ''
+             ORDER BY source COLLATE NOCASE ASC",
+        )
+        .map_err(map_db)?;
+    let rows = stmt
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(map_db)?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.map_err(map_db)?);
+    }
+    Ok(out)
+}
+
+/// Fetches an item by exact URL, or `None`. Used to keep source imports
+/// idempotent.
+pub fn get_by_url(conn: &Connection, url: &str) -> AppResult<Option<LibraryItem>> {
     let mut stmt = conn
         .prepare(&format!(
-            "SELECT {prefixed} FROM library_items i JOIN library_fts f ON f.rowid = i.rowid
-             WHERE library_fts MATCH ?1 ORDER BY rank LIMIT ?2"
+            "SELECT {COLUMNS} FROM library_items WHERE url = ?1 ORDER BY created_at ASC LIMIT 1"
         ))
         .map_err(map_db)?;
-    collect_items(
-        &mut stmt,
-        &[&phrase as &dyn rusqlite::ToSql, &(limit as i64)],
-    )
+    let mut rows = stmt.query([url]).map_err(map_db)?;
+    match rows.next().map_err(map_db)? {
+        Some(row) => Ok(Some(row_to_item(row).map_err(map_db)?)),
+        None => Ok(None),
+    }
+}
+
+/// Sets (or clears) the note linked to an item. Unknown note ids fail with
+/// `InvalidInput` through the foreign key.
+pub fn set_note(conn: &Connection, id: &str, note_id: Option<&str>) -> AppResult<LibraryItem> {
+    let mut item = require(conn, id)?;
+    item.note_id = note_id.map(str::to_string);
+    let affected = conn
+        .execute(
+            "UPDATE library_items SET note_id = ?1 WHERE id = ?2",
+            rusqlite::params![item.note_id, id],
+        )
+        .map_err(map_db)?;
+    if affected == 0 {
+        return Err(AppError::NotFound(format!("library item {id}")));
+    }
+    Ok(item)
 }
 
 /// Attaches a tag to an item. Repeat calls are harmless.

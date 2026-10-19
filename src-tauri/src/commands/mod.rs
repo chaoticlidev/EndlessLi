@@ -11,6 +11,7 @@ pub mod cache;
 pub mod compression;
 pub mod embedding;
 pub mod folders;
+pub mod library;
 pub mod links;
 pub mod memory;
 pub mod notes;

@@ -42,7 +42,7 @@ fn build_provider(state: &AppState) -> AppResult<el_llm::AnyProvider> {
     let provider = el_db::repo::cache::get_setting(&conn, "llm.provider")?
         .unwrap_or_else(|| "openai".to_string());
     let base_url = el_db::repo::cache::get_setting(&conn, "llm.base_url")?;
-    let key = crate::commands::secrets::load_api_key(&state, &provider)?;
+    let key = crate::commands::secrets::load_api_key(state, &provider)?;
     el_llm::AnyProvider::from_parts(&provider, base_url.as_deref(), &key)
 }
 
@@ -55,11 +55,14 @@ pub async fn compression_start(
     max_context_tokens: Option<u32>,
 ) -> AppResult<Vec<CompressionOutput>> {
     if documents.is_empty() {
-        return Err(AppError::InvalidInput("documents must not be empty".to_string()));
+        return Err(AppError::InvalidInput(
+            "documents must not be empty".to_string(),
+        ));
     }
-    let analytics = state.analytics.as_ref().ok_or_else(|| {
-        AppError::Internal("analytics database unavailable".to_string())
-    })?;
+    let analytics = state
+        .analytics
+        .as_ref()
+        .ok_or_else(|| AppError::Internal("analytics database unavailable".to_string()))?;
     let model = crate::embedding::active_model(&state)?;
     let embedder_model = model.clone();
     let context_window = max_context_tokens.unwrap_or(8192) as usize;
@@ -71,7 +74,10 @@ pub async fn compression_start(
         .collect();
     let resp = state
         .sidecar
-        .call("chunk.documents", serde_json::json!({"documents": docs_json, "chunk_size": 800, "overlap": 100}))
+        .call(
+            "chunk.documents",
+            serde_json::json!({"documents": docs_json, "chunk_size": 800, "overlap": 100}),
+        )
         .await?;
     let chunks = resp
         .get("chunks")
@@ -87,9 +93,24 @@ pub async fn compression_start(
     let mut chunk_doc_refs: Vec<String> = Vec::with_capacity(chunks.len());
     let mut chunk_ids: Vec<String> = Vec::with_capacity(chunks.len());
     for c in &chunks {
-        chunk_ids.push(c.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string());
-        chunk_doc_refs.push(c.get("doc_ref").and_then(|v| v.as_str()).unwrap_or("").to_string());
-        chunk_texts.push(c.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string());
+        chunk_ids.push(
+            c.get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+        );
+        chunk_doc_refs.push(
+            c.get("doc_ref")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+        );
+        chunk_texts.push(
+            c.get("text")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+        );
     }
 
     let sidecar = state.sidecar.clone();
@@ -106,7 +127,10 @@ pub async fn compression_start(
             },
             || async {
                 let r = sidecar
-                    .call("embed.texts", serde_json::json!({"texts": [text], "model": embedder_model}))
+                    .call(
+                        "embed.texts",
+                        serde_json::json!({"texts": [text], "model": embedder_model}),
+                    )
                     .await?;
                 Ok(el_cache::CacheValue {
                     bytes: serde_json::to_vec(&r).map_err(|e| AppError::Internal(e.to_string()))?,
@@ -115,14 +139,18 @@ pub async fn compression_start(
             },
         )
         .await?;
-        let r: serde_json::Value = serde_json::from_slice(&bytes)
-            .map_err(|e| AppError::Internal(e.to_string()))?;
+        let r: serde_json::Value =
+            serde_json::from_slice(&bytes).map_err(|e| AppError::Internal(e.to_string()))?;
         let vec = r
             .get("embeddings")
             .and_then(|v| v.as_array())
             .and_then(|a| a.first())
             .and_then(|v| v.as_array())
-            .map(|a| a.iter().map(|x| x.as_f64().unwrap_or(0.0) as f32).collect::<Vec<_>>())
+            .map(|a| {
+                a.iter()
+                    .map(|x| x.as_f64().unwrap_or(0.0) as f32)
+                    .collect::<Vec<_>>()
+            })
             .unwrap_or_default();
         embeddings.push(vec);
     }
@@ -135,7 +163,10 @@ pub async fn compression_start(
             id: chunk_ids[i].clone(),
             job_id: job_id.clone(),
             doc_ref: chunk_doc_refs[i].clone(),
-            chunk_index: c.get("chunk_index").and_then(|v| v.as_i64()).unwrap_or(i as i64),
+            chunk_index: c
+                .get("chunk_index")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(i as i64),
             text: chunk_texts[i].clone(),
             embedding: Some(embeddings[i].clone()),
         });
@@ -144,20 +175,29 @@ pub async fn compression_start(
 
     // 4. K fallback
     let chunk_count = chunks.len();
-    let avg_tokens: usize = if chunk_count == 0 {
-        1
-    } else {
-        (chunk_texts.iter().map(|t| t.len() / 4).sum::<usize>() / chunk_count).max(1)
-    };
+    let avg_tokens: usize = chunk_texts
+        .iter()
+        .map(|t| t.len() / 4)
+        .sum::<usize>()
+        .checked_div(chunk_count)
+        .map_or(1, |tokens| tokens.max(1));
     let auto_k = ((context_window as f64 * 0.6) / avg_tokens as f64).floor() as usize;
     let auto_k = auto_k.clamp(1, chunk_count);
-    let k = k.map(|v| (v as usize).clamp(1, chunk_count)).unwrap_or(auto_k);
+    let k = k
+        .map(|v| (v as usize).clamp(1, chunk_count))
+        .unwrap_or(auto_k);
 
     // 5. cluster
-    let emb_json: Vec<Vec<f64>> = embeddings.iter().map(|v| v.iter().map(|x| *x as f64).collect()).collect();
+    let emb_json: Vec<Vec<f64>> = embeddings
+        .iter()
+        .map(|v| v.iter().map(|x| *x as f64).collect())
+        .collect();
     let cluster_resp = state
         .sidecar
-        .call("cluster.kmeans", serde_json::json!({"embeddings": emb_json, "k": k, "seed": el_compress::CLUSTER_SEED}))
+        .call(
+            "cluster.kmeans",
+            serde_json::json!({"embeddings": emb_json, "k": k, "seed": el_compress::CLUSTER_SEED}),
+        )
         .await?;
     let labels: Vec<usize> = cluster_resp
         .get("labels")
@@ -253,7 +293,9 @@ pub fn compression_save_outputs(
     folder_id: Option<String>,
 ) -> AppResult<Vec<el_core::Note>> {
     if outputs.is_empty() {
-        return Err(AppError::InvalidInput("outputs must not be empty".to_string()));
+        return Err(AppError::InvalidInput(
+            "outputs must not be empty".to_string(),
+        ));
     }
     let conn = state.db.connect()?;
     let mut notes = Vec::new();

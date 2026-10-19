@@ -371,7 +371,7 @@ fn build_provider(state: &AppState) -> AppResult<el_llm::AnyProvider> {
     let provider = el_db::repo::cache::get_setting(&conn, "llm.provider")?
         .unwrap_or_else(|| "openai".to_string());
     let base_url = el_db::repo::cache::get_setting(&conn, "llm.base_url")?;
-    let key = crate::commands::secrets::load_api_key(&state, &provider)?;
+    let key = crate::commands::secrets::load_api_key(state, &provider)?;
     el_llm::AnyProvider::from_parts(&provider, base_url.as_deref(), &key)
 }
 

@@ -376,7 +376,7 @@ where
         &format!("Search: {query}"),
         "in_progress",
     )?;
-    let (hits, serving) = cancellable(
+    let (hits, served_by) = cancellable(
         &cancel,
         &session_id,
         tools.search(
@@ -391,6 +391,10 @@ where
     .inspect_err(|_| {
         finish_step(&db, &*sink, &session_id, &search_step.id, "failed");
     })?;
+    // The backend that served the search is diagnostic only; it is logged
+    // rather than shown to the user, who should not have to care which
+    // provider answered (and it would be wrong once fallbacks kick in).
+    tracing::debug!(provider = %served_by, query = %query, "search served");
     if hits.is_empty() {
         finish_step(&db, &*sink, &session_id, &search_step.id, "failed");
         return Err(AppError::Internal(format!(
@@ -405,7 +409,7 @@ where
         &*sink,
         &session_id,
         parent_step.as_deref(),
-        &format!("Clip top {} pages (via {})", config.clip_count, serving),
+        &format!("Clip top {} pages", config.clip_count),
         "in_progress",
     )?;
     let mut sources = Vec::new();

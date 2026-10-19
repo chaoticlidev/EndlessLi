@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, History, Search, Square, X } from "lucide-react";
+import { ArrowLeft, History, Library, Search, Square, X } from "lucide-react";
 import { events } from "../../ipc/bindings";
 import type {
   ResearchResult,
@@ -10,6 +10,7 @@ import { useUi } from "../../stores/ui";
 import {
   errorMessage,
   queryClient,
+  useAddResearchSources,
   useCancelResearch,
   useProjects,
   useResearchHistory,
@@ -150,9 +151,11 @@ function ResultsList({
   const [projectId, setProjectId] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedNoteId, setSavedNoteId] = useState<string | null>(null);
+  const [libraryNotice, setLibraryNotice] = useState<string | null>(null);
 
   const { data: projects } = useProjects(true);
   const saveResults = useSaveResults();
+  const addSources = useAddResearchSources();
   const openNote = useUi((state) => state.openNote);
   const setActiveTab = useUi((state) => state.setActiveTab);
 
@@ -164,6 +167,21 @@ function ResultsList({
     (result) =>
       result.result_type === "source" || result.result_type === "citation",
   );
+  const sourceIds = sources
+    .filter((result) => result.result_type === "source")
+    .map((result) => result.id);
+
+  function sendToLibrary(resultIds: string[]) {
+    setLibraryNotice(null);
+    addSources.mutate(
+      { sessionId, resultIds },
+      {
+        onSuccess: (items) =>
+          setLibraryNotice(`Added ${items.length} item(s) to the Library.`),
+        onError: (err) => setLibraryNotice(errorMessage(err)),
+      },
+    );
+  }
 
   function toggle(id: string) {
     setSelected((prev) => {
@@ -218,26 +236,55 @@ function ResultsList({
 
       {sources.length > 0 && (
         <div className="flex flex-col gap-1.5">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
-            Sources ({sources.length})
-          </h3>
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+              Sources ({sources.length})
+            </h3>
+            {sourceIds.length > 0 && (
+              <button
+                type="button"
+                disabled={addSources.isPending}
+                onClick={() => sendToLibrary(sourceIds)}
+                className="flex items-center gap-1 rounded-md border border-neutral-300 px-2 py-1 text-xs disabled:opacity-40 dark:border-neutral-600"
+              >
+                <Library size={12} />
+                Add all to Library
+              </button>
+            )}
+          </div>
+          {libraryNotice && (
+            <p className="text-xs text-neutral-500">{libraryNotice}</p>
+          )}
           {sources.map((source) => (
             <div
               key={source.id}
-              className="rounded-md border border-neutral-200 bg-white p-2 dark:border-neutral-700 dark:bg-neutral-900"
+              className="flex items-start gap-2 rounded-md border border-neutral-200 bg-white p-2 dark:border-neutral-700 dark:bg-neutral-900"
             >
-              <a
-                href={source.source_url ?? undefined}
-                target="_blank"
-                rel="noreferrer"
-                className="text-sm font-medium text-blue-700 underline dark:text-blue-400"
-              >
-                {source.source_title || source.source_url || "Source"}
-              </a>
-              {source.content && (
-                <p className="mt-0.5 line-clamp-2 text-xs text-neutral-500">
-                  {source.content}
-                </p>
+              <div className="min-w-0 flex-1">
+                <a
+                  href={source.source_url ?? undefined}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-sm font-medium text-blue-700 underline dark:text-blue-400"
+                >
+                  {source.source_title || source.source_url || "Source"}
+                </a>
+                {source.content && (
+                  <p className="mt-0.5 line-clamp-2 text-xs text-neutral-500">
+                    {source.content}
+                  </p>
+                )}
+              </div>
+              {source.result_type === "source" && (
+                <button
+                  type="button"
+                  title="Add to Library"
+                  disabled={addSources.isPending}
+                  onClick={() => sendToLibrary([source.id])}
+                  className="shrink-0 rounded-md border border-neutral-300 p-1.5 text-neutral-500 disabled:opacity-40 dark:border-neutral-600"
+                >
+                  <Library size={13} />
+                </button>
               )}
             </div>
           ))}

@@ -10,7 +10,7 @@ import {
   FlaskConical,
 } from "lucide-react";
 import { commands } from "../../ipc/bindings";
-import type { TestOutcome } from "../../ipc/bindings";
+import type { MemoryEntry, Project, TestOutcome } from "../../ipc/bindings";
 import {
   errorMessage,
   useAnalyticsStatus,
@@ -563,8 +563,8 @@ function ProjectMemoryList({
   project,
   renderMemory,
 }: {
-  project: any;
-  renderMemory: (memory: any) => any;
+  project: Project;
+  renderMemory: (memory: MemoryEntry) => ReactNode;
 }) {
   const list = useMemoryList(project.id);
   return (
@@ -607,7 +607,7 @@ function MemoryPanel() {
     setNewContent("");
   }
 
-  function renderMemory(memory: any) {
+  function renderMemory(memory: MemoryEntry) {
     return (
       <div key={memory.id} className="flex items-center gap-2 text-sm">
         <span className="flex-1">{memory.content}</span>

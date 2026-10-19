@@ -5,7 +5,13 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { commands } from "./bindings";
-import type { AppError, NewNote, NoteScope } from "./bindings";
+import type {
+  AppError,
+  NewLibraryItem,
+  NewNote,
+  NoteScope,
+  UpdateLibraryItem,
+} from "./bindings";
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -625,5 +631,176 @@ export function useAnalyticsStatus() {
     queryKey: ["analytics-status"],
     queryFn: () => call(() => commands.analyticsStatus()),
     staleTime: 0,
+  });
+}
+
+/** Per-type item totals for the Library categories panel. */
+export function useLibraryStats() {
+  return useQuery({
+    queryKey: ["library", "stats"],
+    queryFn: () => call(() => commands.libraryStats()),
+  });
+}
+
+/** Distinct source names for the Library source filter. */
+export function useLibrarySources() {
+  return useQuery({
+    queryKey: ["library", "sources"],
+    queryFn: () => call(() => commands.librarySources()),
+  });
+}
+
+/** Library items, filtered by type/tag/source and (optionally) full-text. */
+export function useLibraryItems(args: {
+  query: string;
+  itemType: string | null;
+  tagId: string | null;
+  source: string | null;
+}) {
+  const query = args.query.trim();
+  return useQuery({
+    queryKey: [
+      "library",
+      "items",
+      args.itemType,
+      args.tagId,
+      args.source,
+      query,
+    ],
+    queryFn: () =>
+      query.length > 0
+        ? call(() =>
+            commands.librarySearch(
+              query,
+              args.itemType,
+              args.tagId,
+              args.source,
+              200,
+            ),
+          )
+        : call(() =>
+            commands.libraryList(args.itemType, args.tagId, args.source, 200),
+          ),
+  });
+}
+
+/** A single library item with its tags. */
+export function useLibraryDetail(id: string | null) {
+  return useQuery({
+    queryKey: ["library", "detail", id],
+    queryFn: () => call(() => commands.libraryGet(id ?? "")),
+    enabled: id !== null,
+  });
+}
+
+/** A note by id, used to show the note linked to a library item. */
+export function useNote(id: string | null) {
+  return useQuery({
+    queryKey: ["note", id],
+    queryFn: () => call(() => commands.noteGet(id ?? "")),
+    enabled: id !== null,
+  });
+}
+
+/**
+ * Invalidate every library query. All library keys are nested under the
+ * `["library"]` root (items/stats/sources/detail), so one prefix
+ * invalidation refreshes the grid and the categories counts together.
+ */
+function invalidateLibrary(client: QueryClient) {
+  void client.invalidateQueries({ queryKey: ["library"] });
+}
+
+export function useCreateLibraryItem() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: NewLibraryItem) =>
+      call(() => commands.libraryCreate(input)),
+    onSuccess: () => invalidateLibrary(client),
+  });
+}
+
+export function useUpdateLibraryItem() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { id: string; patch: UpdateLibraryItem }) =>
+      call(() => commands.libraryUpdate(args.id, args.patch)),
+    onSuccess: () => invalidateLibrary(client),
+  });
+}
+
+export function useDeleteLibraryItem() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => call(() => commands.libraryDelete(id)),
+    onSuccess: () => invalidateLibrary(client),
+  });
+}
+
+export function useImportLibraryFiles() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (paths: string[]) =>
+      call(() => commands.libraryImportFiles(paths)),
+    onSuccess: () => invalidateLibrary(client),
+  });
+}
+
+export function useLibraryAssignTag() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { itemId: string; tagId: string }) =>
+      call(() => commands.libraryAssignTag(args.itemId, args.tagId)),
+    onSuccess: () => invalidateLibrary(client),
+  });
+}
+
+export function useLibraryUnassignTag() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { itemId: string; tagId: string }) =>
+      call(() => commands.libraryUnassignTag(args.itemId, args.tagId)),
+    onSuccess: () => invalidateLibrary(client),
+  });
+}
+
+export function useLibraryLinkNote() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { itemId: string; noteId: string | null }) =>
+      call(() => commands.libraryLinkNote(args.itemId, args.noteId)),
+    onSuccess: () => invalidateLibrary(client),
+  });
+}
+
+export function useLibraryCreateNote() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (args: {
+      itemId: string;
+      projectId: string | null;
+      folderId: string | null;
+    }) =>
+      call(() =>
+        commands.libraryCreateNote(args.itemId, args.projectId, args.folderId),
+      ),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["library"] });
+      void client.invalidateQueries({ queryKey: ["notes"] });
+    },
+  });
+}
+
+/** Sends selected research sources to the Library. */
+export function useAddResearchSources() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { sessionId: string; resultIds: string[] }) =>
+      call(() =>
+        commands.libraryAddResearchSources(args.sessionId, args.resultIds),
+      ),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["library"] });
+    },
   });
 }

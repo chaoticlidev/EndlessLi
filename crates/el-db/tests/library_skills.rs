@@ -70,6 +70,136 @@ fn library_crud_search_and_tags() {
 }
 
 #[test]
+fn library_filters_stats_sources_and_linking() {
+    let test = TestDb::setup();
+    let conn = test.conn();
+
+    let a = library::create(
+        &conn,
+        &NewLibraryItem {
+            item_type: "article".to_string(),
+            title: "Rust ownership".to_string(),
+            authors: None,
+            url: Some("https://example.com/rust".to_string()),
+            source: Some("Example".to_string()),
+            publication_date: Some("2024".to_string()),
+            content: Some("ownership borrowing lifetimes".to_string()),
+            file_path: None,
+        },
+    )
+    .unwrap();
+    let b = library::create(
+        &conn,
+        &NewLibraryItem {
+            item_type: "pdf".to_string(),
+            title: "Bread baking".to_string(),
+            authors: None,
+            url: None,
+            source: Some("Kitchen".to_string()),
+            publication_date: None,
+            content: Some("flour water salt yeast".to_string()),
+            file_path: Some("/data/library/x.pdf".to_string()),
+        },
+    )
+    .unwrap();
+
+    // No query lists every item; a type filter narrows it.
+    assert_eq!(
+        library::search_filtered(&conn, None, None, None, None, 10)
+            .unwrap()
+            .len(),
+        2
+    );
+    let pdfs = library::search_filtered(&conn, None, Some("pdf"), None, None, 10).unwrap();
+    assert_eq!(pdfs.len(), 1);
+    assert_eq!(pdfs[0].id, b.id);
+    assert!(library::search_filtered(&conn, None, Some("scroll"), None, None, 10).is_err());
+
+    // Source filter.
+    let by_source = library::search_filtered(&conn, None, None, None, Some("Example"), 10).unwrap();
+    assert_eq!(by_source.len(), 1);
+    assert_eq!(by_source[0].id, a.id);
+
+    // Tag filter.
+    let tag = tags::create(&conn, "cooking", None).unwrap();
+    library::assign_tag(&conn, &b.id, &tag.id).unwrap();
+    let tagged = library::search_filtered(&conn, None, None, Some(&tag.id), None, 10).unwrap();
+    assert_eq!(tagged.len(), 1);
+    assert_eq!(tagged[0].id, b.id);
+
+    // Query combined with a type filter.
+    let hits = library::search_filtered(&conn, Some("borrowing"), Some("article"), None, None, 10)
+        .unwrap();
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].id, a.id);
+    assert!(
+        library::search_filtered(&conn, Some("borrowing"), Some("pdf"), None, None, 10)
+            .unwrap()
+            .is_empty()
+    );
+
+    // Per-type counts and distinct sources.
+    let counts = library::type_counts(&conn).unwrap();
+    assert!(counts
+        .iter()
+        .any(|(kind, count)| kind == "pdf" && *count == 1));
+    assert!(counts
+        .iter()
+        .any(|(kind, count)| kind == "article" && *count == 1));
+    assert_eq!(
+        library::sources(&conn).unwrap(),
+        vec!["Example".to_string(), "Kitchen".to_string()]
+    );
+
+    // URL lookup keeps source imports idempotent.
+    assert_eq!(
+        library::get_by_url(&conn, "https://example.com/rust")
+            .unwrap()
+            .map(|item| item.id),
+        Some(a.id.clone())
+    );
+    assert!(library::get_by_url(&conn, "https://missing")
+        .unwrap()
+        .is_none());
+
+    // Linking to a note, then unlinking.
+    let note = el_db::repo::notes::create(
+        &conn,
+        &el_core::NewNote {
+            title: "Note".to_string(),
+            content: String::new(),
+            project_id: None,
+            folder_id: None,
+            author: "user".to_string(),
+            source_session_id: None,
+            created_from_note_id: None,
+        },
+    )
+    .unwrap();
+    let linked = library::set_note(&conn, &a.id, Some(&note.id)).unwrap();
+    assert_eq!(linked.note_id.as_deref(), Some(note.id.as_str()));
+    assert!(library::set_note(&conn, &a.id, None)
+        .unwrap()
+        .note_id
+        .is_none());
+
+    // Publication date is patchable.
+    let updated = library::update(
+        &conn,
+        &b.id,
+        &el_core::UpdateLibraryItem {
+            publication_date: Some("2020-01-01".to_string()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(updated.publication_date.as_deref(), Some("2020-01-01"));
+
+    drop(conn);
+    test.finish();
+}
+
+#[test]
 fn skills_and_scripts_save_replace_and_delete() {
     let test = TestDb::setup();
     let conn = test.conn();

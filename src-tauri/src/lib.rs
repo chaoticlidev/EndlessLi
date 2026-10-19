@@ -20,7 +20,8 @@ use tauri::{Emitter, Manager};
 use tauri_specta::{collect_commands, collect_events, Builder, Event as SpectaEvent};
 
 use commands::{
-    analytics as analytics_commands, cache, compression as compression_commands, embedding as embedding_commands, folders, links, memory as memory_commands, notes,
+    analytics as analytics_commands, cache, compression as compression_commands,
+    embedding as embedding_commands, folders, library, links, memory as memory_commands, notes,
     projects, research, secrets, settings, tags,
 };
 
@@ -61,6 +62,21 @@ pub fn specta_builder() -> Builder<tauri::Wry> {
             links::link_reject,
             links::link_suggestions,
             links::link_approve,
+            library::library_list,
+            library::library_search,
+            library::library_get,
+            library::library_create,
+            library::library_update,
+            library::library_delete,
+            library::library_stats,
+            library::library_sources,
+            library::library_assign_tag,
+            library::library_unassign_tag,
+            library::library_link_note,
+            library::library_create_note,
+            library::library_pick_files,
+            library::library_import_files,
+            library::library_add_research_sources,
             memory_commands::memory_list,
             memory_commands::memory_list_forgotten,
             memory_commands::memory_create,
@@ -118,6 +134,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(builder.invoke_handler())
         .setup(move |app| {
             builder.mount_events(app);

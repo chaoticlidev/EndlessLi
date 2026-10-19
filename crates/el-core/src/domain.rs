@@ -292,6 +292,7 @@ pub struct UpdateLibraryItem {
     pub authors: Option<String>,
     pub url: Option<String>,
     pub source: Option<String>,
+    pub publication_date: Option<String>,
     pub content: Option<String>,
     pub file_path: Option<String>,
     pub note_id: Option<String>,

@@ -52,9 +52,7 @@ pub fn parse(input: &str) -> Option<MemoryCommand> {
                     if id.is_empty() {
                         None
                     } else {
-                        Some(MemoryCommand::Forget {
-                            id: id.to_string(),
-                        })
+                        Some(MemoryCommand::Forget { id: id.to_string() })
                     }
                 }
                 _ => None,
@@ -100,11 +98,7 @@ pub fn build_context(
     let mut lines: Vec<String> = Vec::new();
     // global
     for entry in memory_repo::list_global(conn)? {
-        if entry
-            .expires_at
-            .map(|exp| exp > now)
-            .unwrap_or(true)
-        {
+        if entry.expires_at.map(|exp| exp > now).unwrap_or(true) {
             lines.push(format!("- {}", entry.content));
         }
     }
@@ -152,7 +146,9 @@ mod tests {
         );
         assert_eq!(
             parse("/forget abc"),
-            Some(MemoryCommand::Forget { id: "abc".to_string() })
+            Some(MemoryCommand::Forget {
+                id: "abc".to_string()
+            })
         );
         assert_eq!(parse("/showmem"), Some(MemoryCommand::Show));
         assert!(parse("not a command").is_none());

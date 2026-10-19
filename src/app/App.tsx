@@ -6,6 +6,7 @@ import { PillNav } from "./PillNav";
 import { CommandPalette } from "./CommandPalette";
 import { KnowledgeBaseView } from "./KnowledgeBaseView";
 import { ResearchView } from "../features/research/ResearchView";
+import { LibraryView } from "../features/library/LibraryView";
 import { SettingsView } from "../features/settings/SettingsView";
 import { ComingSoon } from "./ComingSoon";
 
@@ -46,12 +47,7 @@ function ActiveTab() {
     case "research":
       return <ResearchView />;
     case "library":
-      return (
-        <ComingSoon
-          title="Library"
-          text="Archived sources and corpus processing arrive in a later milestone."
-        />
-      );
+      return <LibraryView />;
     case "skills":
       return (
         <ComingSoon

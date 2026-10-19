@@ -56,7 +56,9 @@ pub fn has_api_key(state: &AppState, provider: &str) -> AppResult<bool> {
 pub fn set_api_key(state: &AppState, provider: &str, key: &str) -> AppResult<()> {
     el_security::secrets::check_provider(provider)?;
     if key.trim().is_empty() {
-        return Err(AppError::InvalidInput("API key must not be blank".to_string()));
+        return Err(AppError::InvalidInput(
+            "API key must not be blank".to_string(),
+        ));
     }
     let _ = el_security::set_api_key(provider, key);
     let conn = state.db.connect()?;

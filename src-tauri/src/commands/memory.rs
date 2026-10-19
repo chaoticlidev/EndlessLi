@@ -22,7 +22,10 @@ pub fn memory_list_forgotten(state: State<'_, AppState>) -> AppResult<Vec<Memory
 
 #[tauri::command]
 #[specta::specta]
-pub fn memory_list(state: State<'_, AppState>, project_id: Option<String>) -> AppResult<Vec<MemoryEntry>> {
+pub fn memory_list(
+    state: State<'_, AppState>,
+    project_id: Option<String>,
+) -> AppResult<Vec<MemoryEntry>> {
     let conn = state.db.connect()?;
     if let Some(pid) = project_id {
         el_db::repo::memory::list_for_project(&conn, &pid)
@@ -55,7 +58,11 @@ pub fn memory_create(
 
 #[tauri::command]
 #[specta::specta]
-pub fn memory_update(state: State<'_, AppState>, id: String, content: String) -> AppResult<MemoryEntry> {
+pub fn memory_update(
+    state: State<'_, AppState>,
+    id: String,
+    content: String,
+) -> AppResult<MemoryEntry> {
     let conn = state.db.connect()?;
     el_db::repo::memory::update_content(&conn, &id, &content)
 }
@@ -125,7 +132,12 @@ pub fn memory_build_context(
 ) -> AppResult<String> {
     let conn = state.db.connect()?;
     let enabled = el_db::repo::memory::is_enabled(&conn)?;
-    el_memory::build_context(&conn, project_id.as_deref(), session_memory.as_deref(), enabled)
+    el_memory::build_context(
+        &conn,
+        project_id.as_deref(),
+        session_memory.as_deref(),
+        enabled,
+    )
 }
 
 #[tauri::command]
