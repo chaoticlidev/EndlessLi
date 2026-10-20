@@ -11,6 +11,7 @@ import {
   useTags,
 } from "../../ipc/queries";
 import type { Note } from "../../ipc/bindings";
+import { Select } from "../../components/Select";
 
 function excerpt(content: string, length = 140): string {
   const plain = content
@@ -148,19 +149,16 @@ export function NotesView() {
           )}
         </div>
 
-        <select
-          aria-label="Filter by tag"
+        <Select
+          ariaLabel="Filter by tag"
           value={tagFilterId ?? ""}
-          onChange={(event) => setTagFilterId(event.target.value || null)}
-          className="rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900"
-        >
-          <option value="">All tags</option>
-          {(tags ?? []).map((tag) => (
-            <option key={tag.id} value={tag.id}>
-              {tag.name}
-            </option>
-          ))}
-        </select>
+          onChange={(value) => setTagFilterId(value || null)}
+          options={[
+            { value: "", label: "All tags" },
+            ...(tags ?? []).map((tag) => ({ value: tag.id, label: tag.name })),
+          ]}
+          className="w-40"
+        />
 
         <div className="flex rounded-md border border-neutral-300 dark:border-neutral-700">
           <button

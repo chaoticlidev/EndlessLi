@@ -17,6 +17,7 @@ import {
 } from "../../ipc/queries";
 import type { LibraryItem, UpdateLibraryItem } from "../../ipc/bindings";
 import { typeLabel } from "./libraryTypes";
+import { Select } from "../../components/Select";
 
 interface Fields {
   title: string;
@@ -302,21 +303,22 @@ export function LibraryItemDetail({
         ) : (
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-1.5">
-              <select
-                aria-label="Project for new note"
+              <Select
+                ariaLabel="Project for new note"
                 value={projectId ?? ""}
-                onChange={(event) => setProjectId(event.target.value || null)}
-                className="rounded-md border border-neutral-300 bg-transparent px-2 py-1 text-xs dark:border-neutral-600"
-              >
-                <option value="">Inbox</option>
-                {(projects ?? [])
-                  .filter((project) => !project.archived)
-                  .map((project) => (
-                    <option key={project.id} value={project.id}>
-                      {project.name}
-                    </option>
-                  ))}
-              </select>
+                onChange={(value) => setProjectId(value || null)}
+                options={[
+                  { value: "", label: "Inbox" },
+                  ...(projects ?? [])
+                    .filter((project) => !project.archived)
+                    .map((project) => ({
+                      value: project.id,
+                      label: project.name,
+                    })),
+                ]}
+                className="min-w-32"
+                size="sm"
+              />
               <button
                 type="button"
                 onClick={() =>

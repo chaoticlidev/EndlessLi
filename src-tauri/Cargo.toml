@@ -41,6 +41,7 @@ el-memory = { workspace = true }
 el-security = { workspace = true }
 el-analytics = { workspace = true }
 el-compress = { workspace = true }
+el-skills = { workspace = true }
 
 [features]
 default = ["analytics"]

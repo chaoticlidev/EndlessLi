@@ -5,6 +5,7 @@ import rehypeSanitize from "rehype-sanitize";
 import { ArrowLeft, Eye, GitBranch, Pencil, Save, Trash2 } from "lucide-react";
 import { useUi } from "../../stores/ui";
 import { CodeMirrorEditor } from "../../components/CodeMirrorEditor";
+import { Select } from "../../components/Select";
 import { LinksPanel } from "./LinksPanel";
 import { renderWikilinksAsLinks, wikilinkTitleFromHref } from "./wikilinks";
 import type { FolderNode, NoteDetail } from "../../ipc/bindings";
@@ -136,47 +137,42 @@ function PlacementRow({ noteId }: { noteId: string }) {
 
   return (
     <div className="flex flex-wrap items-center gap-2 text-sm">
-      <select
-        aria-label="Project"
+      <Select
+        ariaLabel="Project"
         value={projectId ?? ""}
-        onChange={(event) => {
-          const next = event.target.value || null;
+        onChange={(next) => {
           moveNote.mutate(
-            { id: noteId, projectId: next, folderId: null },
+            { id: noteId, projectId: next || null, folderId: null },
             { onError: (err) => setError(errorMessage(err)) },
           );
         }}
-        className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-900"
-      >
-        <option value="">Inbox</option>
-        {(projects ?? [])
-          .filter((project) => !project.archived)
-          .map((project) => (
-            <option key={project.id} value={project.id}>
-              {project.name}
-            </option>
-          ))}
-      </select>
+        options={[
+          { value: "", label: "Inbox" },
+          ...(projects ?? [])
+            .filter((project) => !project.archived)
+            .map((project) => ({ value: project.id, label: project.name })),
+        ]}
+        className="w-40"
+      />
       {projectId && (
-        <select
-          aria-label="Folder"
+        <Select
+          ariaLabel="Folder"
           value={detail.note.folder_id ?? ""}
-          onChange={(event) => {
-            const next = event.target.value || null;
+          onChange={(next) => {
             moveNote.mutate(
-              { id: noteId, projectId, folderId: next },
+              { id: noteId, projectId, folderId: next || null },
               { onError: (err) => setError(errorMessage(err)) },
             );
           }}
-          className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-900"
-        >
-          <option value="">No folder</option>
-          {flatten(tree, 0).map((folder) => (
-            <option key={folder.id} value={folder.id}>
-              {folder.label}
-            </option>
-          ))}
-        </select>
+          options={[
+            { value: "", label: "No folder" },
+            ...flatten(tree, 0).map((folder) => ({
+              value: folder.id,
+              label: folder.label,
+            })),
+          ]}
+          className="w-40"
+        />
       )}
       {error && <span className="text-xs text-red-600">{error}</span>}
     </div>
@@ -204,6 +200,17 @@ export function NoteEditor({ noteId }: { noteId: string }) {
   const [prevDetail, setPrevDetail] = useState<NoteDetail | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // New notes open in the editor; existing notes open rendered. Once the user
+  // flips the toggle, their choice wins for the rest of this note.
+  const [touched, setTouched] = useState(false);
+  const [openedEmpty, setOpenedEmpty] = useState<boolean | null>(null);
+  if (openedEmpty === null && detail) {
+    setOpenedEmpty(detail.note.content.trim().length === 0);
+  }
+  const showSource = touched
+    ? editorMode === "source"
+    : editorMode === "source" || openedEmpty === true;
+
   // Adopt server state when new detail arrives while the editor is pristine
   // (no unsaved edits). This render-phase adjustment keeps typing intact
   // across background refetches. `key={noteId}` remounts between notes.
@@ -227,12 +234,13 @@ export function NoteEditor({ noteId }: { noteId: string }) {
     function onKey(event: KeyboardEvent) {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "e") {
         event.preventDefault();
-        setEditorMode(editorMode === "source" ? "preview" : "source");
+        setTouched(true);
+        setEditorMode(showSource ? "preview" : "source");
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [editorMode, setEditorMode]);
+  }, [showSource, setEditorMode]);
 
   function scheduleSave(nextTitle: string, nextContent: string) {
     setSaveState("dirty");
@@ -310,8 +318,11 @@ export function NoteEditor({ noteId }: { noteId: string }) {
           <button
             type="button"
             title="Source (Ctrl+E)"
-            onClick={() => setEditorMode("source")}
-            className={`flex items-center gap-1 rounded-l-md px-2 py-1 text-xs ${editorMode === "source" ? "bg-neutral-200 dark:bg-neutral-700" : ""}`}
+            onClick={() => {
+              setTouched(true);
+              setEditorMode("source");
+            }}
+            className={`flex items-center gap-1 rounded-l-md px-2 py-1 text-xs ${showSource ? "bg-neutral-200 dark:bg-neutral-700" : ""}`}
           >
             <Pencil size={12} />
             Source
@@ -319,8 +330,11 @@ export function NoteEditor({ noteId }: { noteId: string }) {
           <button
             type="button"
             title="Preview (Ctrl+E)"
-            onClick={() => setEditorMode("preview")}
-            className={`flex items-center gap-1 rounded-r-md px-2 py-1 text-xs ${editorMode === "preview" ? "bg-neutral-200 dark:bg-neutral-700" : ""}`}
+            onClick={() => {
+              setTouched(true);
+              setEditorMode("preview");
+            }}
+            className={`flex items-center gap-1 rounded-r-md px-2 py-1 text-xs ${!showSource ? "bg-neutral-200 dark:bg-neutral-700" : ""}`}
           >
             <Eye size={12} />
             Preview
@@ -364,7 +378,7 @@ export function NoteEditor({ noteId }: { noteId: string }) {
       </div>
       {actionError && <p className="text-sm text-red-600">{actionError}</p>}
 
-      {editorMode === "source" ? (
+      {showSource ? (
         <div className="rounded-lg border border-neutral-300 bg-white p-2 dark:border-neutral-700 dark:bg-neutral-900">
           <CodeMirrorEditor
             key={noteId}

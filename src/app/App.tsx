@@ -7,8 +7,8 @@ import { CommandPalette } from "./CommandPalette";
 import { KnowledgeBaseView } from "./KnowledgeBaseView";
 import { ResearchView } from "../features/research/ResearchView";
 import { LibraryView } from "../features/library/LibraryView";
+import { SkillsView } from "../features/skills/SkillsView";
 import { SettingsView } from "../features/settings/SettingsView";
-import { ComingSoon } from "./ComingSoon";
 
 function useGlobalShortcuts() {
   const setPaletteOpen = useUi((state) => state.setPaletteOpen);
@@ -49,12 +49,7 @@ function ActiveTab() {
     case "library":
       return <LibraryView />;
     case "skills":
-      return (
-        <ComingSoon
-          title="Skills"
-          text="Reusable skills and scripts arrive in a later milestone."
-        />
-      );
+      return <SkillsView />;
     case "settings":
       return <SettingsView />;
   }

@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, History, Library, Search, Square, X } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import rehypeSanitize from "rehype-sanitize";
 import { events } from "../../ipc/bindings";
 import type {
   ResearchResult,
   ResearchSession,
   ResearchStep,
 } from "../../ipc/bindings";
+import { Select } from "../../components/Select";
 import { useUi } from "../../stores/ui";
 import {
   errorMessage,
@@ -230,7 +233,11 @@ function ResultsList({
               {result.result_type}
             </span>
           </div>
-          <p className="whitespace-pre-wrap text-sm">{result.content}</p>
+          <div className="markdown-body text-sm">
+            <ReactMarkdown rehypePlugins={[rehypeSanitize]}>
+              {result.content}
+            </ReactMarkdown>
+          </div>
         </article>
       ))}
 
@@ -313,21 +320,20 @@ function ResultsList({
                 onChange={(event) => setTitle(event.target.value)}
                 className="rounded-md border border-neutral-300 bg-transparent px-2 py-1 text-sm outline-none dark:border-neutral-600"
               />
-              <select
-                aria-label="Project"
+              <Select
+                ariaLabel="Project"
                 value={projectId ?? ""}
-                onChange={(event) => setProjectId(event.target.value || null)}
-                className="rounded-md border border-neutral-300 bg-transparent px-2 py-1 text-sm dark:border-neutral-600"
-              >
-                <option value="">Inbox</option>
-                {(projects ?? [])
-                  .filter((project) => !project.archived)
-                  .map((project) => (
-                    <option key={project.id} value={project.id}>
-                      {project.name}
-                    </option>
-                  ))}
-              </select>
+                onChange={(value) => setProjectId(value || null)}
+                options={[
+                  { value: "", label: "Inbox" },
+                  ...(projects ?? [])
+                    .filter((project) => !project.archived)
+                    .map((project) => ({
+                      value: project.id,
+                      label: project.name,
+                    })),
+                ]}
+              />
               <div className="flex gap-1.5">
                 <button
                   type="button"
@@ -557,21 +563,22 @@ export function ResearchView() {
                 </button>
               ))}
             </div>
-            <select
-              aria-label="Project"
+            <Select
+              ariaLabel="Project"
               value={projectId ?? ""}
-              onChange={(event) => setProjectId(event.target.value || null)}
-              className="rounded-full border border-neutral-300 bg-transparent px-2.5 py-1 text-xs dark:border-neutral-700"
-            >
-              <option value="">Inbox</option>
-              {(projects ?? [])
-                .filter((project) => !project.archived)
-                .map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.name}
-                  </option>
-                ))}
-            </select>
+              onChange={(value) => setProjectId(value || null)}
+              options={[
+                { value: "", label: "Inbox" },
+                ...(projects ?? [])
+                  .filter((project) => !project.archived)
+                  .map((project) => ({
+                    value: project.id,
+                    label: project.name,
+                  })),
+              ]}
+              size="sm"
+              pill
+            />
           </div>
         </div>
       </div>

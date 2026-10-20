@@ -219,6 +219,66 @@ export const commands = {
 	sidecarStatus: () => typedError<string, AppError>(__TAURI_INVOKE("sidecar_status")),
 	compressionStart: (documents: CompressionDoc[], k: number | null, maxContextTokens: number | null) => typedError<CompressionOutput[], AppError>(__TAURI_INVOKE("compression_start", { documents, k, maxContextTokens })),
 	compressionSaveOutputs: (outputs: CompressionOutput[], projectId: string | null, folderId: string | null) => typedError<Note[], AppError>(__TAURI_INVOKE("compression_save_outputs", { outputs, projectId, folderId })),
+	/**  Lists skills alphabetically. */
+	skillList: () => typedError<Skill[], AppError>(__TAURI_INVOKE("skill_list")),
+	/**  Fetches one skill by name. */
+	skillGet: (name: string) => typedError<{
+	id: string,
+	name: string,
+	description: string,
+	content: string,
+	parameters: string,
+	category: string,
+	created_at: number,
+	updated_at: number,
+} | null, AppError>(__TAURI_INVOKE("skill_get", { name })),
+	/**  Parses and validates a skill document without saving it (editor preview). */
+	skillParse: (document: string) => typedError<SkillDoc, AppError>(__TAURI_INVOKE("skill_parse", { document })),
+	/**
+	 *  Validates and saves a skill document. When `previous_name` is supplied and
+	 *  differs from the document's name, the existing row is renamed (the editor's
+	 *  frontmatter `name:` is editable).
+	 */
+	skillSave: (document: string, previousName: string | null) => typedError<Skill, AppError>(__TAURI_INVOKE("skill_save", { document, previousName })),
+	/**  Deletes a skill by name. */
+	skillDelete: (name: string) => typedError<null, AppError>(__TAURI_INVOKE("skill_delete", { name })),
+	/**
+	 *  Renders a skill with the supplied values and completes it through the
+	 *  configured provider.
+	 */
+	skillRun: (name: string, values: ParamValue[]) => typedError<SkillRunOutcome, AppError>(__TAURI_INVOKE("skill_run", { name, values })),
+	/**  Saves a skill's output as an AI-authored note. */
+	skillSaveOutput: (name: string, output: string, title: string | null, projectId: string | null, folderId: string | null) => typedError<Note, AppError>(__TAURI_INVOKE("skill_save_output", { name, output, title, projectId, folderId })),
+	/**  Lists scripts alphabetically. */
+	scriptList: () => typedError<Script[], AppError>(__TAURI_INVOKE("script_list")),
+	/**  Fetches one script by name. */
+	scriptGet: (name: string) => typedError<{
+	id: string,
+	name: string,
+	description: string,
+	content: string,
+	parameters: string,
+	category: string,
+	allow_network: boolean,
+	created_at: number,
+	updated_at: number,
+} | null, AppError>(__TAURI_INVOKE("script_get", { name })),
+	/**  Parses and validates a script document without saving it (editor preview). */
+	scriptParse: (document: string) => typedError<ScriptDoc, AppError>(__TAURI_INVOKE("script_parse", { document })),
+	/**
+	 *  Validates and saves a script document. When `previous_name` is supplied and
+	 *  differs from the document's name, the existing row is renamed.
+	 */
+	scriptSave: (document: string, previousName: string | null) => typedError<Script, AppError>(__TAURI_INVOKE("script_save", { document, previousName })),
+	/**  Deletes a script by name. */
+	scriptDelete: (name: string) => typedError<null, AppError>(__TAURI_INVOKE("script_delete", { name })),
+	/**
+	 *  Runs a script in the sandbox. `allow_network` defaults to the script's
+	 *  declared value; the timeout is clamped to a sane range.
+	 */
+	scriptRun: (name: string, values: ParamValue[], allowNetwork: boolean | null, timeoutSecs: number | null) => typedError<ScriptOutcome, AppError>(__TAURI_INVOKE("script_run", { name, values, allowNetwork, timeoutSecs })),
+	/**  Reports whether a Python interpreter is available for the Scripts tab. */
+	scriptRuntime: () => typedError<ScriptRuntime, AppError>(__TAURI_INVOKE("script_runtime")),
 };
 
 /** Events */
@@ -261,6 +321,16 @@ export type AppError =
 export type CacheStats = {
 	entries: number,
 	bytes: number,
+};
+
+/**
+ *  Token counts for one call. `estimated` is true when the server reported
+ *  no usage and the client counted instead.
+ */
+export type ChatUsage = {
+	tokens_in: number,
+	tokens_out: number,
+	estimated: boolean,
 };
 
 export type CompressionDoc = {
@@ -470,6 +540,21 @@ export type NoteScope =
 /**  Notes of one folder. */
 { type: "folder"; folder_id: string };
 
+/**  One parameter value supplied by the caller when running a skill or script. */
+export type ParamValue = {
+	name: string,
+	value: string,
+};
+
+/**  One declared parameter, in the public/API shape. */
+export type Parameter = {
+	name: string,
+	description: string,
+	required: boolean,
+	/**  Value used when the caller leaves the parameter empty. */
+	default: string | null,
+};
+
 /**  A named collection of notes with its own memory scope and settings. */
 export type Project = {
 	id: string,
@@ -550,6 +635,80 @@ export type ResearchView = {
 	session: ResearchSession,
 	steps: ResearchStep[],
 	results: ResearchResult[],
+};
+
+/**  A reusable Python automation with sandbox metadata. */
+export type Script = {
+	id: string,
+	name: string,
+	description: string,
+	content: string,
+	parameters: string,
+	category: string,
+	allow_network: boolean,
+	created_at: number,
+	updated_at: number,
+};
+
+/**
+ *  A parsed, validated script. The body (code) lives in the stored `content`
+ *  column, not here; this is only the metadata the UI and runner need.
+ */
+export type ScriptDoc = {
+	name: string,
+	description: string,
+	category: string,
+	parameters: Parameter[],
+	allow_network: boolean,
+};
+
+/**  Result of one sandboxed run. */
+export type ScriptOutcome = {
+	stdout: string,
+	stderr: string,
+	/**  Process exit code, or `None` when the script was killed on timeout. */
+	exit_code: number | null,
+	timed_out: boolean,
+	duration_ms: number,
+};
+
+/**  Whether a Python interpreter is present for the Scripts tab. */
+export type ScriptRuntime = {
+	available: boolean,
+	interpreter: string | null,
+};
+
+/**  A reusable Markdown prompt template with YAML frontmatter and parameters. */
+export type Skill = {
+	id: string,
+	name: string,
+	description: string,
+	content: string,
+	parameters: string,
+	category: string,
+	created_at: number,
+	updated_at: number,
+};
+
+/**  A parsed, validated skill. */
+export type SkillDoc = {
+	name: string,
+	description: string,
+	category: string,
+	parameters: Parameter[],
+	/**  The prompt template (the body after the frontmatter). */
+	template: string,
+};
+
+/**  The result of running one skill. */
+export type SkillRunOutcome = {
+	skill: string,
+	model: string,
+	/**  The fully rendered prompt that was sent (for transparency). */
+	prompt: string,
+	output: string,
+	usage: ChatUsage,
+	budget_warning: string | null,
 };
 
 /**  A case-insensitively unique label attachable to notes and library items. */

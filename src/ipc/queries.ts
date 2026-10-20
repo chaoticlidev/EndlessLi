@@ -10,6 +10,9 @@ import type {
   NewLibraryItem,
   NewNote,
   NoteScope,
+  ParamValue,
+  Script,
+  Skill,
   UpdateLibraryItem,
 } from "./bindings";
 
@@ -802,5 +805,172 @@ export function useAddResearchSources() {
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: ["library"] });
     },
+  });
+}
+
+function invalidateSkills(client: QueryClient) {
+  void client.invalidateQueries({ queryKey: ["skills"] });
+  void client.invalidateQueries({ queryKey: ["skill-parse"] });
+}
+
+function invalidateScripts(client: QueryClient) {
+  void client.invalidateQueries({ queryKey: ["scripts"] });
+  void client.invalidateQueries({ queryKey: ["script-parse"] });
+}
+
+/** The saved skills, alphabetically. */
+export function useSkills() {
+  return useQuery({
+    queryKey: ["skills"],
+    queryFn: () => call(() => commands.skillList()),
+  });
+}
+
+/**
+ * Parses a saved skill's document for the run panel. Keyed on `updated_at`
+ * so it re-parses after every save.
+ */
+export function useParsedSkill(
+  skill: { name: string; content: string; updated_at: number } | null,
+) {
+  return useQuery({
+    queryKey: ["skill-parse", skill?.name, skill?.updated_at],
+    queryFn: () => call(() => commands.skillParse(skill?.content ?? "")),
+    enabled: skill !== null,
+  });
+}
+
+export function useSaveSkill() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { document: string; previousName: string | null }) =>
+      call(() => commands.skillSave(args.document, args.previousName)),
+    onSuccess: (saved, variables) => {
+      // Patch the list immediately so a rename shows the new row without a
+      // flicker while the refetch runs.
+      client.setQueryData<Skill[]>(["skills"], (items) => {
+        if (!items) return items;
+        const rest = items.filter(
+          (item) =>
+            item.name !== variables.previousName && item.name !== saved.name,
+        );
+        return [...rest, saved].sort((a, b) => a.name.localeCompare(b.name));
+      });
+      invalidateSkills(client);
+    },
+  });
+}
+
+export function useDeleteSkill() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) => call(() => commands.skillDelete(name)),
+    onSuccess: () => invalidateSkills(client),
+  });
+}
+
+export function useRunSkill() {
+  return useMutation({
+    mutationFn: (args: { name: string; values: ParamValue[] }) =>
+      call(() => commands.skillRun(args.name, args.values)),
+  });
+}
+
+export function useSaveSkillOutput() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (args: {
+      name: string;
+      output: string;
+      title: string | null;
+      projectId: string | null;
+    }) =>
+      call(() =>
+        commands.skillSaveOutput(
+          args.name,
+          args.output,
+          args.title,
+          args.projectId,
+          null,
+        ),
+      ),
+    onSuccess: () => invalidateKnowledge(client),
+  });
+}
+
+/** The saved scripts, alphabetically. */
+export function useScripts() {
+  return useQuery({
+    queryKey: ["scripts"],
+    queryFn: () => call(() => commands.scriptList()),
+  });
+}
+
+/** Whether a Python interpreter is available for running scripts. */
+export function useScriptRuntime() {
+  return useQuery({
+    queryKey: ["script-runtime"],
+    queryFn: () => call(() => commands.scriptRuntime()),
+    staleTime: 60_000,
+  });
+}
+
+/**
+ * Parses a saved script's document for the run panel. Keyed on `updated_at`
+ * so it re-parses after every save.
+ */
+export function useParsedScript(
+  script: { name: string; content: string; updated_at: number } | null,
+) {
+  return useQuery({
+    queryKey: ["script-parse", script?.name, script?.updated_at],
+    queryFn: () => call(() => commands.scriptParse(script?.content ?? "")),
+    enabled: script !== null,
+  });
+}
+
+export function useSaveScript() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { document: string; previousName: string | null }) =>
+      call(() => commands.scriptSave(args.document, args.previousName)),
+    onSuccess: (saved, variables) => {
+      client.setQueryData<Script[]>(["scripts"], (items) => {
+        if (!items) return items;
+        const rest = items.filter(
+          (item) =>
+            item.name !== variables.previousName && item.name !== saved.name,
+        );
+        return [...rest, saved].sort((a, b) => a.name.localeCompare(b.name));
+      });
+      invalidateScripts(client);
+    },
+  });
+}
+
+export function useDeleteScript() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) => call(() => commands.scriptDelete(name)),
+    onSuccess: () => invalidateScripts(client),
+  });
+}
+
+export function useRunScript() {
+  return useMutation({
+    mutationFn: (args: {
+      name: string;
+      values: ParamValue[];
+      allowNetwork: boolean;
+      timeoutSecs: number;
+    }) =>
+      call(() =>
+        commands.scriptRun(
+          args.name,
+          args.values,
+          args.allowNetwork,
+          args.timeoutSecs,
+        ),
+      ),
   });
 }

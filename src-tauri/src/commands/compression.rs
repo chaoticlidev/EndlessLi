@@ -23,29 +23,6 @@ pub struct CompressionOutput {
     pub sources: Vec<String>,
 }
 
-fn default_model(state: &AppState) -> AppResult<String> {
-    let conn = state.db.connect()?;
-    let stored = el_db::repo::cache::get_setting(&conn, "llm.model")?;
-    if let Some(model) = stored.filter(|m| !m.trim().is_empty()) {
-        return Ok(model);
-    }
-    let provider = el_db::repo::cache::get_setting(&conn, "llm.provider")?.unwrap_or_default();
-    Ok(match provider.as_str() {
-        "anthropic" => "claude-sonnet-4-5".to_string(),
-        "deepseek" => "deepseek-chat".to_string(),
-        _ => "gpt-4o-mini".to_string(),
-    })
-}
-
-fn build_provider(state: &AppState) -> AppResult<el_llm::AnyProvider> {
-    let conn = state.db.connect()?;
-    let provider = el_db::repo::cache::get_setting(&conn, "llm.provider")?
-        .unwrap_or_else(|| "openai".to_string());
-    let base_url = el_db::repo::cache::get_setting(&conn, "llm.base_url")?;
-    let key = crate::commands::secrets::load_api_key(state, &provider)?;
-    el_llm::AnyProvider::from_parts(&provider, base_url.as_deref(), &key)
-}
-
 #[tauri::command]
 #[specta::specta]
 pub async fn compression_start(
@@ -237,8 +214,8 @@ pub async fn compression_start(
     }
 
     // 7. generation
-    let provider = Arc::new(build_provider(&state)?);
-    let llm_model = default_model(&state)?;
+    let provider = Arc::new(crate::commands::provider::build_provider(&state)?);
+    let llm_model = crate::commands::provider::configured_model(&state)?;
     let mut outputs = Vec::new();
     for (i, &idx) in rep_indices.iter().enumerate() {
         let doc_ref = &chunk_doc_refs[idx];

@@ -406,11 +406,7 @@ fn resolve_launch() -> Result<LaunchPlan, String> {
 }
 
 fn resolve_dev_dir(dir: &Path) -> Result<LaunchPlan, String> {
-    #[cfg(windows)]
-    let interpreter = dir.join(".venv").join("Scripts").join("python.exe");
-    #[cfg(not(windows))]
-    let interpreter = dir.join(".venv").join("bin").join("python");
-    if interpreter.is_file() {
+    if let Some(interpreter) = dev_interpreter(dir) {
         return Ok(LaunchPlan::Python {
             interpreter,
             workdir: dir.to_path_buf(),
@@ -426,6 +422,64 @@ fn resolve_dev_dir(dir: &Path) -> Result<LaunchPlan, String> {
         interpreter: PathBuf::from(fallback),
         workdir: dir.to_path_buf(),
     })
+}
+
+/// Path to the dev venv interpreter for a sidecar directory, when it exists.
+fn dev_interpreter(dir: &Path) -> Option<PathBuf> {
+    #[cfg(windows)]
+    let interpreter = dir.join(".venv").join("Scripts").join("python.exe");
+    #[cfg(not(windows))]
+    let interpreter = dir.join(".venv").join("bin").join("python");
+    interpreter.is_file().then_some(interpreter)
+}
+
+/// Resolves a Python interpreter able to run user scripts: the dev venv when
+/// present, otherwise `python`/`python3` on PATH. Scripts share the sidecar's
+/// interpreter (it is the one guarantee of a working CPython on this machine).
+/// The caller should probe the result with [`probe_interpreter`] before use.
+pub fn script_interpreter() -> PathBuf {
+    if let Ok(dir) = std::env::var("ENDLESSLI_SIDECAR_DIR") {
+        if let Some(interpreter) = dev_interpreter(Path::new(&dir)) {
+            return interpreter;
+        }
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        for candidate in [cwd.join("sidecar"), cwd.join("../sidecar")] {
+            if let Some(interpreter) = dev_interpreter(&candidate) {
+                return interpreter;
+            }
+        }
+    }
+    #[cfg(windows)]
+    {
+        PathBuf::from("python")
+    }
+    #[cfg(not(windows))]
+    {
+        PathBuf::from("python3")
+    }
+}
+
+/// Probes an interpreter with a trivial import, bounded by a short timeout.
+pub async fn probe_interpreter(path: &Path) -> bool {
+    let mut command = Command::new(path);
+    command
+        .arg("-I")
+        .arg("-c")
+        .arg("import sys")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true);
+    match command.spawn() {
+        Ok(mut child) => {
+            matches!(
+                tokio::time::timeout(std::time::Duration::from_secs(5), child.wait()).await,
+                Ok(Ok(status)) if status.success()
+            )
+        }
+        Err(_) => false,
+    }
 }
 
 #[cfg(test)]

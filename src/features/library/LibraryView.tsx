@@ -12,6 +12,7 @@ import {
 import { LibraryPanel } from "./LibraryPanel";
 import { LibraryItemDetail } from "./LibraryItemDetail";
 import { LIBRARY_TYPES, typeLabel } from "./libraryTypes";
+import { Select } from "../../components/Select";
 
 function excerpt(content: string, length = 160): string {
   const plain = content
@@ -168,20 +169,18 @@ function NewItemDialog({
       >
         <h2 className="text-sm font-semibold">New library item</h2>
         <div className="grid grid-cols-2 gap-2">
-          <label className="flex flex-col gap-1 text-sm">
+          <div className="flex flex-col gap-1 text-sm">
             <span className="text-xs font-medium text-neutral-500">Type</span>
-            <select
+            <Select
+              ariaLabel="Type"
               value={form.itemType}
-              onChange={(event) => set("itemType", event.target.value)}
-              className="rounded-md border border-neutral-300 bg-transparent px-2 py-1 text-sm dark:border-neutral-600"
-            >
-              {LIBRARY_TYPES.map((type) => (
-                <option key={type} value={type}>
-                  {typeLabel(type)}
-                </option>
-              ))}
-            </select>
-          </label>
+              onChange={(value) => set("itemType", value)}
+              options={LIBRARY_TYPES.map((type) => ({
+                value: type,
+                label: typeLabel(type),
+              }))}
+            />
+          </div>
           <label className="flex flex-col gap-1 text-sm">
             <span className="text-xs font-medium text-neutral-500">Source</span>
             <input

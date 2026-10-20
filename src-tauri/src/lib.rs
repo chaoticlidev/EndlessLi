@@ -22,7 +22,7 @@ use tauri_specta::{collect_commands, collect_events, Builder, Event as SpectaEve
 use commands::{
     analytics as analytics_commands, cache, compression as compression_commands,
     embedding as embedding_commands, folders, library, links, memory as memory_commands, notes,
-    projects, research, secrets, settings, tags,
+    projects, research, secrets, settings, skills, tags,
 };
 
 /// The full IPC surface, exposed for the bindings export test.
@@ -112,6 +112,20 @@ pub fn specta_builder() -> Builder<tauri::Wry> {
             research::sidecar_status,
             compression_commands::compression_start,
             compression_commands::compression_save_outputs,
+            skills::skill_list,
+            skills::skill_get,
+            skills::skill_parse,
+            skills::skill_save,
+            skills::skill_delete,
+            skills::skill_run,
+            skills::skill_save_output,
+            skills::script_list,
+            skills::script_get,
+            skills::script_parse,
+            skills::script_save,
+            skills::script_delete,
+            skills::script_run,
+            skills::script_runtime,
         ])
         .events(collect_events![
             research::ResearchStepEvent,
@@ -146,6 +160,16 @@ pub fn run() {
                 .unwrap_or_else(|_| data_dir.join(logging::LOG_DB_FILENAME));
             let db = el_db::Database::open(&data_dir.join("endlessli.db"))
                 .map_err(|err| format!("open database: {err}"))?;
+            // Seed the shipped skills/scripts the first time each table is
+            // empty; failures are logged, never fatal.
+            match db.connect() {
+                Ok(conn) => {
+                    if let Err(err) = skills::seed_builtins(&conn) {
+                        tracing::warn!("seeding built-in skills/scripts failed: {err}");
+                    }
+                }
+                Err(err) => tracing::warn!("could not seed built-ins: {err}"),
+            }
 
             let (sidecar_tx, mut sidecar_rx) = tokio::sync::mpsc::unbounded_channel();
             let sidecar = sidecar::SidecarManager::new(sidecar_tx, data_dir.join("models"));

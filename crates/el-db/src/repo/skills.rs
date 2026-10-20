@@ -192,3 +192,98 @@ pub fn delete_script(conn: &Connection, name: &str) -> AppResult<()> {
     }
     Ok(())
 }
+
+/// Saves a skill, renaming the row that previously had `previous_name`.
+///
+/// Editing the frontmatter `name:` in the editor is a rename, not a new
+/// skill: the id and creation time survive and the old name disappears.
+pub fn save_skill_with_rename(
+    conn: &Connection,
+    input: &NewSkill,
+    previous_name: &str,
+) -> AppResult<Skill> {
+    let name = check_not_blank(&input.name, "skill name")?;
+    let Some(existing) = get_skill_by_name(conn, previous_name)? else {
+        return save_skill(conn, input);
+    };
+    if existing.name == name {
+        return save_skill(conn, input);
+    }
+    if get_skill_by_name(conn, &name)?.is_some() {
+        return Err(AppError::Conflict(format!(
+            "a skill named '{name}' already exists"
+        )));
+    }
+    let now = now_ts();
+    conn.execute(
+        "UPDATE skills SET name = ?1, description = ?2, content = ?3, parameters = ?4,
+         category = ?5, updated_at = ?6 WHERE id = ?7",
+        rusqlite::params![
+            &name,
+            &input.description,
+            &input.content,
+            &input.parameters,
+            &input.category,
+            now,
+            &existing.id
+        ],
+    )
+    .map_err(map_db)?;
+    Ok(Skill {
+        id: existing.id,
+        name,
+        description: input.description.clone(),
+        content: input.content.clone(),
+        parameters: input.parameters.clone(),
+        category: input.category.clone(),
+        created_at: existing.created_at,
+        updated_at: now,
+    })
+}
+
+/// Saves a script, renaming the row that previously had `previous_name`.
+pub fn save_script_with_rename(
+    conn: &Connection,
+    input: &NewScript,
+    previous_name: &str,
+) -> AppResult<Script> {
+    let name = check_not_blank(&input.name, "script name")?;
+    let Some(existing) = get_script_by_name(conn, previous_name)? else {
+        return save_script(conn, input);
+    };
+    if existing.name == name {
+        return save_script(conn, input);
+    }
+    if get_script_by_name(conn, &name)?.is_some() {
+        return Err(AppError::Conflict(format!(
+            "a script named '{name}' already exists"
+        )));
+    }
+    let now = now_ts();
+    conn.execute(
+        "UPDATE scripts SET name = ?1, description = ?2, content = ?3, parameters = ?4,
+         category = ?5, allow_network = ?6, updated_at = ?7 WHERE id = ?8",
+        rusqlite::params![
+            &name,
+            &input.description,
+            &input.content,
+            &input.parameters,
+            &input.category,
+            bool_param(input.allow_network),
+            now,
+            &existing.id
+        ],
+    )
+    .map_err(map_db)?;
+    Ok(Script {
+        id: existing.id,
+        name,
+        description: input.description.clone(),
+        content: input.content.clone(),
+        parameters: input.parameters.clone(),
+        category: input.category.clone(),
+        allow_network: input.allow_network,
+        created_at: existing.created_at,
+        updated_at: now,
+    })
+}

@@ -61,7 +61,7 @@ export const useUi = create<UiState>((set, get) => ({
   viewMode: "bento",
   setViewMode: (viewMode) => set({ viewMode }),
 
-  editorMode: "source",
+  editorMode: "preview",
   setEditorMode: (editorMode) => set({ editorMode }),
 
   tagFilterId: null,

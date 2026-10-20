@@ -29,20 +29,31 @@ pub struct TestOutcome {
     pub budget_warning: Option<String>,
 }
 
-/// Runs one prompt end to end: budget-check the estimate, send, sanitize the
-/// output, and log usage. Shared by the `api_key_test` command and, later,
-/// research and skills.
+/// A completion plus its usage and any budget warning, from [`run_prompt`].
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct PromptOutcome {
+    pub text: String,
+    pub usage: ChatUsage,
+    pub budget_warning: Option<String>,
+}
+
+/// Sends one chat request end to end: budget-check the estimate, send, log the
+/// usage, and sanitize the output. The single funnel every LLM call goes
+/// through (the Settings self-test, research, and skills).
 ///
 /// Takes the pool (not a connection) so no `!Send` handle is held across
-/// awaits: budget state is read before sending, usage is logged after, each
-/// on its own short-lived checkout.
-pub async fn run_test_prompt<P: LlmProvider>(
+/// awaits: budget state is read before sending, usage is logged after, each on
+/// its own short-lived checkout. A budget stop propagates as an error and logs
+/// nothing.
+pub async fn run_prompt<P: LlmProvider>(
     db: &el_db::Database,
     provider: &P,
     model: &str,
+    messages: Vec<ChatMessage>,
+    max_tokens: Option<u32>,
+    temperature: Option<f32>,
     session_id: Option<&str>,
-) -> AppResult<TestOutcome> {
-    let messages = vec![ChatMessage::user("Reply with exactly this word: OK")];
+) -> AppResult<PromptOutcome> {
     let estimate = estimate_messages(
         model,
         &messages
@@ -57,8 +68,8 @@ pub async fn run_test_prompt<P: LlmProvider>(
     let request = ChatRequest {
         model: model.to_string(),
         messages,
-        max_tokens: Some(16),
-        temperature: Some(0.0),
+        max_tokens,
+        temperature,
     };
     let response = provider.complete(request).await?;
     let text = el_security::sanitize_llm_output(&response.text);
@@ -73,12 +84,38 @@ pub async fn run_test_prompt<P: LlmProvider>(
             response.usage.tokens_out,
         )?;
     }
-    Ok(TestOutcome {
+    Ok(PromptOutcome {
         text,
-        tokens_in: response.usage.tokens_in,
-        tokens_out: response.usage.tokens_out,
-        estimated: response.usage.estimated,
+        usage: response.usage,
         budget_warning: warning,
+    })
+}
+
+/// Runs the Settings self-test prompt (a fixed one-word reply) through
+/// [`run_prompt`] and reshapes the outcome for the Settings UI.
+pub async fn run_test_prompt<P: LlmProvider>(
+    db: &el_db::Database,
+    provider: &P,
+    model: &str,
+    session_id: Option<&str>,
+) -> AppResult<TestOutcome> {
+    let messages = vec![ChatMessage::user("Reply with exactly this word: OK")];
+    let outcome = run_prompt(
+        db,
+        provider,
+        model,
+        messages,
+        Some(16),
+        Some(0.0),
+        session_id,
+    )
+    .await?;
+    Ok(TestOutcome {
+        text: outcome.text,
+        tokens_in: outcome.usage.tokens_in,
+        tokens_out: outcome.usage.tokens_out,
+        estimated: outcome.usage.estimated,
+        budget_warning: outcome.budget_warning,
     })
 }
 

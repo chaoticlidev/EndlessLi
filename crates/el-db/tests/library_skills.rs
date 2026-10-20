@@ -200,6 +200,97 @@ fn library_filters_stats_sources_and_linking() {
 }
 
 #[test]
+fn skills_and_scripts_rename_in_place() {
+    let test = TestDb::setup();
+    let conn = test.conn();
+
+    let skill = skills::save_skill(
+        &conn,
+        &NewSkill {
+            name: "old".to_string(),
+            description: "d".to_string(),
+            content: "---\nname: old\n---\nbody".to_string(),
+            parameters: "[]".to_string(),
+            category: "general".to_string(),
+        },
+    )
+    .unwrap();
+    let renamed = skills::save_skill_with_rename(
+        &conn,
+        &NewSkill {
+            name: "new".to_string(),
+            description: "d2".to_string(),
+            content: "---\nname: new\n---\nbody".to_string(),
+            parameters: "[]".to_string(),
+            category: "general".to_string(),
+        },
+        "old",
+    )
+    .unwrap();
+    assert_eq!(renamed.id, skill.id);
+    assert!(skills::get_skill_by_name(&conn, "old").unwrap().is_none());
+    assert_eq!(skills::list_skills(&conn).unwrap().len(), 1);
+
+    // Renaming onto a name that already exists is a conflict.
+    skills::save_skill(
+        &conn,
+        &NewSkill {
+            name: "taken".to_string(),
+            description: String::new(),
+            content: "body".to_string(),
+            parameters: "[]".to_string(),
+            category: "general".to_string(),
+        },
+    )
+    .unwrap();
+    assert!(skills::save_skill_with_rename(
+        &conn,
+        &NewSkill {
+            name: "taken".to_string(),
+            description: String::new(),
+            content: "body".to_string(),
+            parameters: "[]".to_string(),
+            category: "general".to_string(),
+        },
+        "new",
+    )
+    .is_err());
+
+    let script = skills::save_script(
+        &conn,
+        &NewScript {
+            name: "sold".to_string(),
+            description: String::new(),
+            content: "print('x')".to_string(),
+            parameters: "[]".to_string(),
+            category: "general".to_string(),
+            allow_network: false,
+        },
+    )
+    .unwrap();
+    let renamed = skills::save_script_with_rename(
+        &conn,
+        &NewScript {
+            name: "snew".to_string(),
+            description: String::new(),
+            content: "print('y')".to_string(),
+            parameters: "[]".to_string(),
+            category: "general".to_string(),
+            allow_network: true,
+        },
+        "sold",
+    )
+    .unwrap();
+    assert_eq!(renamed.id, script.id);
+    assert!(renamed.allow_network);
+    assert!(skills::get_script_by_name(&conn, "sold").unwrap().is_none());
+    assert_eq!(skills::list_scripts(&conn).unwrap().len(), 1);
+
+    drop(conn);
+    test.finish();
+}
+
+#[test]
 fn skills_and_scripts_save_replace_and_delete() {
     let test = TestDb::setup();
     let conn = test.conn();

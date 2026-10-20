@@ -9,6 +9,8 @@ use tauri::State;
 
 use crate::state::AppState;
 
+use super::provider::default_model_for;
+
 /// Per-provider key presence for the Settings UI.
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 pub struct ProviderKeyStatus {
@@ -138,7 +140,7 @@ pub async fn api_key_test(
     let settings_model = el_db::repo::cache::get_setting(&conn, "llm.model")?;
     let model = model
         .or(settings_model)
-        .unwrap_or_else(|| default_model(&provider).to_string());
+        .unwrap_or_else(|| default_model_for(&provider).to_string());
     if model.trim().is_empty() {
         return Err(AppError::InvalidInput(
             "model must not be blank".to_string(),
@@ -195,14 +197,5 @@ fn limit_of(conn: &rusqlite::Connection, key: &str) -> AppResult<Option<i64>> {
             Ok(if value > 0 { Some(value) } else { None })
         }
         None => Ok(None),
-    }
-}
-
-/// Sensible default model per provider; the Settings model field overrides it.
-fn default_model(provider: &str) -> &'static str {
-    match provider {
-        "anthropic" => "claude-sonnet-4-5",
-        "deepseek" => "deepseek-chat",
-        _ => "gpt-4o-mini",
     }
 }

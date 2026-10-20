@@ -224,9 +224,9 @@ pub async fn research_start(
         folder_id.clone(),
         session_memory.clone(),
     )?;
-    let provider = build_provider(&state)?;
-    let model = default_model_from_settings(&state)?;
-    log_research_setup(provider_name(&provider), &model);
+    let provider = crate::commands::provider::build_provider(&state)?;
+    let model = crate::commands::provider::configured_model(&state)?;
+    log_research_setup(provider.name(), &model);
 
     let conn = state.db.connect()?;
     let session = el_db::repo::research::create_session(
@@ -308,30 +308,6 @@ fn log_research_setup(provider: &str, model: &str) {
     );
 }
 
-/// Stable display name for a configured provider.
-fn provider_name(provider: &el_llm::AnyProvider) -> &'static str {
-    provider.name()
-}
-
-/// Reads the model setting with a provider default fallback.
-fn default_model_from_settings(state: &AppState) -> AppResult<String> {
-    let conn = state.db.connect()?;
-    let stored = el_db::repo::cache::get_setting(&conn, "llm.model")?;
-    if let Some(model) = stored.filter(|model| !model.trim().is_empty()) {
-        return Ok(model);
-    }
-    let provider = el_db::repo::cache::get_setting(&conn, "llm.provider")?.unwrap_or_default();
-    Ok(default_model_for(&provider).to_string())
-}
-
-fn default_model_for(provider: &str) -> &'static str {
-    match provider {
-        "anthropic" => "claude-sonnet-4-5",
-        "deepseek" => "deepseek-chat",
-        _ => "gpt-4o-mini",
-    }
-}
-
 /// Builds the run configuration from settings plus the keychain.
 fn run_config(
     state: &AppState,
@@ -363,16 +339,6 @@ fn run_config(
         folder_id,
         session_memory,
     })
-}
-
-/// Builds the configured LLM provider from settings plus the keychain.
-fn build_provider(state: &AppState) -> AppResult<el_llm::AnyProvider> {
-    let conn = state.db.connect()?;
-    let provider = el_db::repo::cache::get_setting(&conn, "llm.provider")?
-        .unwrap_or_else(|| "openai".to_string());
-    let base_url = el_db::repo::cache::get_setting(&conn, "llm.base_url")?;
-    let key = crate::commands::secrets::load_api_key(state, &provider)?;
-    el_llm::AnyProvider::from_parts(&provider, base_url.as_deref(), &key)
 }
 
 /// Persists the terminal status, emits it, and forgets the run.

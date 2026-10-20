@@ -3,17 +3,22 @@ import { EditorState } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { defaultKeymap } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
+import { python } from "@codemirror/lang-python";
+
+/** Which language mode the editor highlights. */
+export type EditorLanguage = "markdown" | "python";
 
 interface CodeMirrorEditorProps {
   initialDoc: string;
   onChange: (doc: string) => void;
+  language?: EditorLanguage;
   autofocus?: boolean;
 }
 
 /**
- * Minimal CodeMirror 6 Markdown editor. The parent owns the document: it
- * passes the opening text once and receives edits through `onChange`.
- * Switching notes remounts via `key` from the parent.
+ * Minimal CodeMirror 6 editor (Markdown or Python). The parent owns the
+ * document: it passes the opening text once and receives edits through
+ * `onChange`. Switching documents remounts via `key` from the parent.
  *
  * The editor is created exactly once per mount. The effect depends only on
  * stable values on purpose: `initialDoc` changes on every keystroke (it is
@@ -23,6 +28,7 @@ interface CodeMirrorEditorProps {
 export function CodeMirrorEditor({
   initialDoc,
   onChange,
+  language = "markdown",
   autofocus,
 }: CodeMirrorEditorProps) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -41,7 +47,7 @@ export function CodeMirrorEditor({
       doc: initialRef.current,
       extensions: [
         keymap.of(defaultKeymap),
-        markdown(),
+        language === "python" ? python() : markdown(),
         EditorView.lineWrapping,
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {

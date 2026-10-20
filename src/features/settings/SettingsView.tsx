@@ -35,6 +35,7 @@ import {
   useSetting,
   useTokenSummary,
 } from "../../ipc/queries";
+import { Select } from "../../components/Select";
 
 const LLM_PROVIDERS = [
   { id: "openai", label: "OpenAI", defaultModel: "gpt-4o-mini" },
@@ -463,21 +464,21 @@ function EmbeddingPanel() {
 
   return (
     <div className="flex flex-col gap-2 text-sm">
-      <label className="flex flex-col gap-1">
+      <div className="flex flex-col gap-1">
         <span className="font-medium">Embedding model</span>
-        <select
+        <Select
+          ariaLabel="Embedding model"
           value={active}
-          onChange={(event) => void change(event.target.value)}
-          className="rounded-md border border-neutral-300 bg-transparent px-2 py-1 text-sm dark:border-neutral-600"
-        >
-          {EMBEDDING_MODELS.map((entry) => (
-            <option key={entry.id} value={entry.id}>
-              {entry.label}
-            </option>
-          ))}
-          {customModel && <option value={active}>{active}</option>}
-        </select>
-      </label>
+          onChange={(value) => void change(value)}
+          options={[
+            ...EMBEDDING_MODELS.map((entry) => ({
+              value: entry.id,
+              label: entry.label,
+            })),
+            ...(customModel ? [{ value: active, label: active }] : []),
+          ]}
+        />
+      </div>
 
       {status && !status.available && (
         <p className="rounded-md border border-amber-400 p-2 text-xs text-amber-700 dark:text-amber-400">
@@ -660,27 +661,28 @@ function MemoryPanel() {
       </label>
       <div className="flex flex-col gap-2">
         <span className="text-xs font-medium">New memory</span>
-        <select
+        <Select
+          ariaLabel="Memory scope"
           value={newScope}
-          onChange={(e) => setNewScope(e.target.value as "global" | "project")}
-          className="rounded-md border border-neutral-300 bg-transparent px-2 py-1 text-sm dark:border-neutral-600"
-        >
-          <option value="global">Global</option>
-          <option value="project">Project</option>
-        </select>
+          onChange={(value) => setNewScope(value as "global" | "project")}
+          options={[
+            { value: "global", label: "Global" },
+            { value: "project", label: "Project" },
+          ]}
+        />
         {newScope === "project" && (
-          <select
+          <Select
+            ariaLabel="Project"
             value={selectedProject ?? ""}
-            onChange={(e) => setSelectedProject(e.target.value || null)}
-            className="rounded-md border border-neutral-300 bg-transparent px-2 py-1 text-sm dark:border-neutral-600"
-          >
-            <option value="">Select project</option>
-            {projects.map((project) => (
-              <option key={project.id} value={project.id}>
-                {project.name} ({project.id})
-              </option>
-            ))}
-          </select>
+            onChange={(value) => setSelectedProject(value || null)}
+            options={[
+              { value: "", label: "Select project" },
+              ...projects.map((project) => ({
+                value: project.id,
+                label: `${project.name} (${project.id})`,
+              })),
+            ]}
+          />
         )}
         <textarea
           value={newContent}
@@ -754,25 +756,23 @@ export function SettingsView() {
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col gap-3 overflow-y-auto pb-4">
       <Section title="Language Model">
-        <label className="flex flex-col gap-1 text-sm">
+        <div className="flex flex-col gap-1 text-sm">
           <span className="font-medium">Provider</span>
-          <select
+          <Select
+            ariaLabel="Provider"
             value={current}
-            onChange={(event) => {
+            onChange={(value) => {
               void setSetting.mutateAsync({
                 key: "llm.provider",
-                value: event.target.value,
+                value,
               });
             }}
-            className="rounded-md border border-neutral-300 bg-transparent px-2 py-1 text-sm dark:border-neutral-600"
-          >
-            {LLM_PROVIDERS.map((entry) => (
-              <option key={entry.id} value={entry.id}>
-                {entry.label}
-              </option>
-            ))}
-          </select>
-        </label>
+            options={LLM_PROVIDERS.map((entry) => ({
+              value: entry.id,
+              label: entry.label,
+            }))}
+          />
+        </div>
         <SettingField
           settingKey="llm.model"
           label="Model (blank uses the provider default)"
