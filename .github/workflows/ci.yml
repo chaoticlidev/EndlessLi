@@ -40,7 +40,8 @@ jobs:
       - run: PYTHONPATH=sidecar pytest sidecar/tests -q
 
   rust:
-    name: Rust (${{ matrix.os }})    runs-on: ${{ matrix.os }}
+    name: Rust (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
