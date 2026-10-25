@@ -47,6 +47,7 @@ impl TestDb {
 struct StubTools;
 
 impl ResearchTools for StubTools {
+    #[allow(unused_variables)]
     async fn search(
         &self,
         query: &str,
@@ -54,6 +55,17 @@ impl ResearchTools for StubTools {
         _providers: &[String],
         _searxng_url: Option<&str>,
         _brave_key: Option<&str>,
+        _tavily_key: Option<&str>,
+        _exa_key: Option<&str>,
+        _keenable_key: Option<&str>,
+        _firecrawl_key: Option<&str>,
+        _bing_key: Option<&str>,
+        _parallel_key: Option<&str>,
+        _anysearch_key: Option<&str>,
+        _perplexity_key: Option<&str>,
+        _serpbase_key: Option<&str>,
+        _you_key: Option<&str>,
+        _safe_search: &str,
     ) -> AppResult<(Vec<SearchHit>, String)> {
         Ok((
             vec![
@@ -122,8 +134,19 @@ fn config() -> RunConfig {
         providers: vec!["stub".to_string()],
         searxng_url: None,
         brave_key: None,
+        tavily_key: None,
+        exa_key: None,
+        keenable_key: None,
+        firecrawl_key: None,
+        bing_key: None,
+        parallel_key: None,
+        anysearch_key: None,
+        perplexity_key: None,
+        serpbase_key: None,
+        you_key: None,
+        safe_search: "off".to_string(),
         clip_count: 2,
-        max_context_tokens: 6000,
+        max_context_tokens: 60000,
         llm_call_cap: 25,
         project_id: None,
         folder_id: None,

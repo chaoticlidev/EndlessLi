@@ -32,7 +32,8 @@ pub struct ClipDoc {
 /// children can spawn onto tasks.
 pub trait ResearchTools: Send + Sync {
     /// Runs a web search across the requested providers with fallback.
-    /// Returns hits plus the provider that served them (for cache labels).
+    /// Returns hits plus the provider that served them (for cache labels)
+    #[allow(clippy::too_many_arguments)]
     fn search<'a>(
         &'a self,
         query: &'a str,

@@ -46,6 +46,7 @@ enum LaunchPlan {
 }
 
 /// Holds either a Tauri sidecar handle or a Tokio child, depending on mode.
+#[allow(clippy::large_enum_variant)]
 enum ActiveChild {
     Tauri(CommandChild),
     Tokio(tokio::process::Child),
@@ -141,7 +142,7 @@ impl SidecarManager {
                     let _ = child.kill();
                 }
                 ActiveChild::Tokio(mut child) => {
-                    let _ = child.kill();
+                    let _ = child.start_kill();
                 }
             }
         }
