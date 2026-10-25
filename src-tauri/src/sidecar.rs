@@ -78,7 +78,10 @@ impl ChildStdin {
         let payload = format!("{line}\n");
         match self {
             ChildStdin::Tokio(stdin) => {
-                stdin.write_all(payload.as_bytes()).await.map_err(|e| e.to_string())?;
+                stdin
+                    .write_all(payload.as_bytes())
+                    .await
+                    .map_err(|e| e.to_string())?;
                 stdin.flush().await.map_err(|e| e.to_string())
             }
         }
@@ -177,7 +180,7 @@ impl SidecarManager {
             "method": method,
             "params": params,
         });
-        
+
         let write_result = {
             let mut stdin_guard = self.inner.stdin.lock().await;
             if let Some(stdin) = stdin_guard.as_mut() {
@@ -191,8 +194,9 @@ impl SidecarManager {
                 let mut child_guard = self.inner.child.lock().expect("child lock");
                 match child_guard.as_mut() {
                     Some(ActiveChild::Tauri(child)) => {
-                        let payload = serde_json::to_string(&line)
-                            .map_err(|err| AppError::Internal(format!("encode sidecar request: {err}")))?;
+                        let payload = serde_json::to_string(&line).map_err(|err| {
+                            AppError::Internal(format!("encode sidecar request: {err}"))
+                        })?;
                         child
                             .write(format!("{payload}\n").as_bytes())
                             .map_err(|err| AppError::Internal(format!("write to sidecar: {err}")))
@@ -257,9 +261,10 @@ impl SidecarManager {
 
         match &plan {
             LaunchPlan::Binary => self.spawn_tauri().await,
-            LaunchPlan::Python { interpreter, workdir } => {
-                self.spawn_tokio(interpreter, workdir).await
-            }
+            LaunchPlan::Python {
+                interpreter,
+                workdir,
+            } => self.spawn_tokio(interpreter, workdir).await,
         }
     }
 
@@ -267,7 +272,9 @@ impl SidecarManager {
         let mut child_guard = self.inner.child.lock().expect("child lock");
         match child_guard.as_mut() {
             Some(ActiveChild::Tauri(_)) => true,
-            Some(ActiveChild::Tokio(child)) => child.try_wait().map(|exit| exit.is_none()).unwrap_or(false),
+            Some(ActiveChild::Tokio(child)) => {
+                child.try_wait().map(|exit| exit.is_none()).unwrap_or(false)
+            }
             None => false,
         }
     }
@@ -278,17 +285,23 @@ impl SidecarManager {
     }
 
     async fn spawn_tauri(&self) -> AppResult<()> {
-        let app = self.inner.app_handle.get()
+        let app = self
+            .inner
+            .app_handle
+            .get()
             .ok_or_else(|| AppError::Internal("AppHandle not initialized".to_string()))?;
 
-        let mut command = app.shell().sidecar("endlessli-sidecar")
+        let mut command = app
+            .shell()
+            .sidecar("endlessli-sidecar")
             .map_err(|e| AppError::Internal(format!("failed to init sidecar: {e}")))?;
-        
+
         command = command
             .env("ENDLESSLI_EMBED_CACHE_DIR", &self.inner.model_cache_dir)
             .env("HF_HUB_DISABLE_SYMLINKS_WARNING", "1");
 
-        let (mut rx, child) = command.spawn()
+        let (mut rx, child) = command
+            .spawn()
             .map_err(|err| AppError::Internal(format!("spawn bundled sidecar: {err}")))?;
 
         *self.inner.child.lock().expect("child lock") = Some(ActiveChild::Tauri(child));
@@ -303,7 +316,7 @@ impl SidecarManager {
                 match event {
                     CommandEvent::Stdout(bytes) => {
                         buffer.extend_from_slice(&bytes);
-                        
+
                         // Process all complete lines in the buffer
                         while let Some(newline_pos) = buffer.iter().position(|&b| b == b'\n') {
                             let line_bytes: Vec<u8> = buffer.drain(..=newline_pos).collect();
@@ -345,11 +358,21 @@ impl SidecarManager {
             .stderr(std::process::Stdio::piped())
             .kill_on_drop(true);
 
-        let mut child = command.spawn()
+        let mut child = command
+            .spawn()
             .map_err(|err| AppError::Internal(format!("spawn dev sidecar: {err}")))?;
-        let stdout = child.stdout.take().ok_or_else(|| AppError::Internal("no stdout".to_string()))?;
-        let stderr = child.stderr.take().ok_or_else(|| AppError::Internal("no stderr".to_string()))?;
-        let stdin = child.stdin.take().ok_or_else(|| AppError::Internal("no stdin".to_string()))?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| AppError::Internal("no stdout".to_string()))?;
+        let stderr = child
+            .stderr
+            .take()
+            .ok_or_else(|| AppError::Internal("no stderr".to_string()))?;
+        let stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| AppError::Internal("no stdin".to_string()))?;
 
         *self.inner.child.lock().expect("child lock") = Some(ActiveChild::Tokio(child));
         *self.inner.stdin.lock().await = Some(ChildStdin::Tokio(stdin));
@@ -378,7 +401,10 @@ impl SidecarManager {
     }
 
     async fn check_health(&self) -> AppResult<()> {
-        match self.raw_call("health.check", Value::Null, HEALTH_TIMEOUT_SECS).await {
+        match self
+            .raw_call("health.check", Value::Null, HEALTH_TIMEOUT_SECS)
+            .await
+        {
             Ok(_) => Ok(()),
             Err(err) => {
                 self.on_transport_failure().await;
@@ -434,7 +460,10 @@ fn handle_stdout_line(pending_owner: &Arc<ManagerInner>, line: &str) {
     if let Some(sender) = sender {
         if let Some(error) = response.get("error") {
             let _ = sender.send(Err(SidecarRpcError {
-                code: error.get("code").and_then(|code| code.as_i64()).unwrap_or(-1),
+                code: error
+                    .get("code")
+                    .and_then(|code| code.as_i64())
+                    .unwrap_or(-1),
                 message: error
                     .get("message")
                     .and_then(|message| message.as_str())

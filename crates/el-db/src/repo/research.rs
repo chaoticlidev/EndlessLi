@@ -255,22 +255,25 @@ pub fn set_step_status(conn: &Connection, id: &str, status: &str) -> AppResult<(
     set_step_status_with_details(conn, id, status, None)
 }
 
-pub fn set_step_status_with_details(conn: &Connection, id: &str, status: &str, details: Option<String>) -> AppResult<()> {
+pub fn set_step_status_with_details(
+    conn: &Connection,
+    id: &str,
+    status: &str,
+    details: Option<String>,
+) -> AppResult<()> {
     check_enum(status, STEP_STATUS_VALUES, "status")?;
     let affected = if let Some(details) = details {
-        conn
-            .execute(
-                "UPDATE research_steps SET status = ?1, details = ?2 WHERE id = ?3",
-                (status, details, id),
-            )
-            .map_err(map_db)?
+        conn.execute(
+            "UPDATE research_steps SET status = ?1, details = ?2 WHERE id = ?3",
+            (status, details, id),
+        )
+        .map_err(map_db)?
     } else {
-        conn
-            .execute(
-                "UPDATE research_steps SET status = ?1 WHERE id = ?2",
-                (status, id),
-            )
-            .map_err(map_db)?
+        conn.execute(
+            "UPDATE research_steps SET status = ?1 WHERE id = ?2",
+            (status, id),
+        )
+        .map_err(map_db)?
     };
     if affected == 0 {
         return Err(AppError::NotFound(format!("step {id}")));

@@ -73,7 +73,11 @@ pub async fn search(query: &str, max_results: u32) -> AppResult<Vec<SearchHit>> 
     let results: Vec<serde_json::Value> = payload
         .get("result")
         .and_then(|result| result.get("results"))
-        .or_else(|| payload.get("result").and_then(|result| result.get("content")))
+        .or_else(|| {
+            payload
+                .get("result")
+                .and_then(|result| result.get("content"))
+        })
         .or_else(|| payload.get("content"))
         .and_then(|value| value.as_array())
         .cloned()
@@ -81,9 +85,10 @@ pub async fn search(query: &str, max_results: u32) -> AppResult<Vec<SearchHit>> 
 
     let mut hits = Vec::new();
     for item in results.iter().take(max_results as usize) {
-        let url = item.get("url").and_then(|v| v.as_str()).or_else(|| {
-            item.get("link").and_then(|v| v.as_str())
-        });
+        let url = item
+            .get("url")
+            .and_then(|v| v.as_str())
+            .or_else(|| item.get("link").and_then(|v| v.as_str()));
         if url.is_none() || url.unwrap().is_empty() {
             continue;
         }
@@ -91,16 +96,26 @@ pub async fn search(query: &str, max_results: u32) -> AppResult<Vec<SearchHit>> 
             Ok(parsed) => parsed,
             Err(_) => {
                 hits.push(SearchHit {
-                    title: item.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                    title: item
+                        .get("title")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
                     url: url.unwrap().to_string(),
-                    snippet: item.get("snippet").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                    snippet: item
+                        .get("snippet")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
                 });
                 continue;
             }
         };
         hits.push(SearchHit {
             title: parsed.title.unwrap_or_default(),
-            url: parsed.url.unwrap_or_else(|| parsed.link.unwrap_or_default()),
+            url: parsed
+                .url
+                .unwrap_or_else(|| parsed.link.unwrap_or_default()),
             snippet: parsed.snippet.unwrap_or_default(),
         });
     }

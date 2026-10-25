@@ -280,7 +280,8 @@ fn finish_step_with_details(
     details: Option<String>,
 ) {
     if let Ok(conn) = db.connect() {
-        let _ = el_db::repo::research::set_step_status_with_details(&conn, step_id, status, details);
+        let _ =
+            el_db::repo::research::set_step_status_with_details(&conn, step_id, status, details);
         if let Ok(steps) = el_db::repo::research::list_steps(&conn, session_id) {
             if let Some(step) = steps.into_iter().find(|step| step.id == step_id) {
                 sink.emit(ResearchEvent {
@@ -461,14 +462,28 @@ where
     )
     .await
     .inspect_err(|err| {
-        finish_step_with_details(&db, &*sink, &session_id, &search_step.id, "failed", Some(err.to_string()));
+        finish_step_with_details(
+            &db,
+            &*sink,
+            &session_id,
+            &search_step.id,
+            "failed",
+            Some(err.to_string()),
+        );
     })?;
     // The backend that served the search is diagnostic only; it is logged
     // rather than shown to the user, who should not have to care which
     // provider answered (and it would be wrong once fallbacks kick in).
     tracing::debug!(provider = %served_by, query = %query, "search served");
     if hits.is_empty() {
-        finish_step_with_details(&db, &*sink, &session_id, &search_step.id, "failed", Some(format!("search returned no results for {query:?}")));
+        finish_step_with_details(
+            &db,
+            &*sink,
+            &session_id,
+            &search_step.id,
+            "failed",
+            Some(format!("search returned no results for {query:?}")),
+        );
         return Err(AppError::Internal(format!(
             "search returned no results for {query:?}"
         )));
@@ -499,7 +514,14 @@ where
                 text: doc.text.clone(),
             }),
             Err(err) if is_cancelled(&err) => {
-                finish_step_with_details(&db, &*sink, &session_id, &clip_step.id, "failed", Some(err.to_string()));
+                finish_step_with_details(
+                    &db,
+                    &*sink,
+                    &session_id,
+                    &clip_step.id,
+                    "failed",
+                    Some(err.to_string()),
+                );
                 return Err(err);
             }
             Err(err) => {
@@ -518,7 +540,14 @@ where
         } else {
             clip_errors[0].clone()
         };
-        finish_step_with_details(&db, &*sink, &session_id, &clip_step.id, "failed", Some(details));
+        finish_step_with_details(
+            &db,
+            &*sink,
+            &session_id,
+            &clip_step.id,
+            "failed",
+            Some(details),
+        );
         return Err(AppError::Internal(
             "No sources could be clipped.".to_string(),
         ));
@@ -565,7 +594,14 @@ where
     )
     .await
     .inspect_err(|err| {
-        finish_step_with_details(&db, &*sink, &session_id, &synth_step.id, "failed", Some(err.to_string()));
+        finish_step_with_details(
+            &db,
+            &*sink,
+            &session_id,
+            &synth_step.id,
+            "failed",
+            Some(err.to_string()),
+        );
     })?;
     let (summary, has_citations) = validate_citations(&raw, sources.len());
     let summary = if has_citations {
@@ -920,7 +956,14 @@ where
     )
     .await
     .inspect_err(|err| {
-        finish_step_with_details(&db, &*sink, &session_id, &merge_step.id, "failed", Some(err.to_string()));
+        finish_step_with_details(
+            &db,
+            &*sink,
+            &session_id,
+            &merge_step.id,
+            "failed",
+            Some(err.to_string()),
+        );
     })?;
     let (summary, has_citations) = validate_citations(&merged, global_sources.len().max(1));
     let summary = if has_citations {

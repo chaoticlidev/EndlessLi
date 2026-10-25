@@ -197,9 +197,9 @@ pub fn run() {
 
             let (sidecar_tx, mut sidecar_rx) = tokio::sync::mpsc::unbounded_channel();
             let sidecar = sidecar::SidecarManager::new(sidecar_tx, data_dir.join("models"));
-            
+
             sidecar.set_app_handle(app.handle().clone());
-            
+
             let (research_tx, mut research_rx) =
                 tokio::sync::mpsc::unbounded_channel::<el_research::ResearchEvent>();
 
