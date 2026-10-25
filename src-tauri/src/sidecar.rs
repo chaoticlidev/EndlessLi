@@ -581,17 +581,18 @@ mod tests {
 
         let manager = SidecarManager::new(tx, PathBuf::from("."));
         assert_eq!(manager.status(), SidecarStatus::Stopped);
-        
+
         // Record crashes up to the max
         for _ in 0..MAX_RESTARTS {
             manager.record_crash();
         }
-        
+
         // The status should be either Restarting or Disabled depending on the internal state machine.
         let final_status = manager.status();
         assert!(
             final_status == SidecarStatus::Restarting || final_status == SidecarStatus::Disabled,
-            "Expected Restarting or Disabled, got {:?}", final_status
+            "Expected Restarting or Disabled, got {:?}",
+            final_status
         );
     }
 }
