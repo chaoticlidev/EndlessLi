@@ -10,7 +10,7 @@ fn main() {
     </dependentAssembly>
   </dependency>
 </assembly>"#;
-        
+
         std::fs::write("windows-app.manifest", manifest).unwrap();
         std::fs::write("windows-app.rc", "1 24 \"windows-app.manifest\"").unwrap();
     }
