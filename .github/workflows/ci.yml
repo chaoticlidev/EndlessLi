@@ -7,6 +7,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  CARGO_PROFILE_DEV_DEBUG: 0
 
 jobs:
   frontend:
@@ -93,13 +94,12 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-      - name: Free up disk space
+      - name: Free up Rust cache space on Linux
         if: runner.os == 'Linux'
         run: |
           sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
           sudo rm -rf /opt/ghc
-          sudo rm -rf "/usr/local/share/boost"
-          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
       - name: Stub sidecar binaries for CI
         shell: bash
         run: |
