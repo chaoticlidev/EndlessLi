@@ -1,4 +1,20 @@
 fn main() {
+    // Write the .rc and .manifest files if they don't exist
+    #[cfg(windows)]
+    {
+        let manifest = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity type="win32" name="Microsoft.Windows.Common-Controls" version="6.0.0.0" processorArchitecture="*" publicKeyToken="6595b64144ccf1df" language="*"/>
+    </dependentAssembly>
+  </dependency>
+</assembly>"#;
+        
+        std::fs::write("windows-app.manifest", manifest).unwrap();
+        std::fs::write("windows-app.rc", "1 24 \"windows-app.manifest\"").unwrap();
+    }
+
     #[allow(unused_mut)]
     let mut attributes = tauri_build::Attributes::new();
 
