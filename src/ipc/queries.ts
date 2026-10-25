@@ -212,6 +212,15 @@ export function useDeleteProject() {
   });
 }
 
+export function useSetProjectEncryption() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { id: string; enabled: boolean }) =>
+      call(() => commands.projectEncryptionSet(args.id, args.enabled)),
+    onSuccess: () => invalidateKnowledge(client),
+  });
+}
+
 export function useCreateFolder() {
   const client = useQueryClient();
   return useMutation({
@@ -374,6 +383,24 @@ export function useCreateMemory() {
   });
 }
 
+export function useSetMemoryScope() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (args: {
+      id: string;
+      memoryType: "global" | "project";
+      projectId: string | null;
+    }) =>
+      call(() =>
+        commands.memorySetScope(args.id, args.memoryType, args.projectId),
+      ),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["memory-list"] });
+      void client.invalidateQueries({ queryKey: ["memory-forgotten"] });
+    },
+  });
+}
+
 export function useForgetMemory() {
   const client = useQueryClient();
   return useMutation({
@@ -527,6 +554,18 @@ export function useCancelResearch() {
   return useMutation({
     mutationFn: (sessionId: string) =>
       call(() => commands.researchCancel(sessionId)),
+  });
+}
+
+export function useDeleteResearch() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (sessionId: string) =>
+      call(() => commands.researchDelete(sessionId)),
+    onSuccess: (_data, sessionId) => {
+      client.removeQueries({ queryKey: ["research-view", sessionId] });
+      void client.invalidateQueries({ queryKey: ["research-history"] });
+    },
   });
 }
 
@@ -884,6 +923,7 @@ export function useSaveSkillOutput() {
       output: string;
       title: string | null;
       projectId: string | null;
+      folderId?: string | null;
     }) =>
       call(() =>
         commands.skillSaveOutput(
@@ -891,7 +931,30 @@ export function useSaveSkillOutput() {
           args.output,
           args.title,
           args.projectId,
-          null,
+          args.folderId ?? null,
+        ),
+      ),
+    onSuccess: () => invalidateKnowledge(client),
+  });
+}
+
+export function useSaveScriptOutput() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (args: {
+      name: string;
+      output: string;
+      title: string | null;
+      projectId: string | null;
+      folderId?: string | null;
+    }) =>
+      call(() =>
+        commands.scriptSaveOutput(
+          args.name,
+          args.output,
+          args.title,
+          args.projectId,
+          args.folderId ?? null,
         ),
       ),
     onSuccess: () => invalidateKnowledge(client),

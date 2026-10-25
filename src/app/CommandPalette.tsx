@@ -19,6 +19,7 @@ export function CommandPalette() {
   const setActiveTab = useUi((state) => state.setActiveTab);
   const setViewMode = useUi((state) => state.setViewMode);
   const setEditorMode = useUi((state) => state.setEditorMode);
+  const setSettingsOpen = useUi((state) => state.setSettingsOpen);
   const selectProject = useUi((state) => state.selectProject);
   const openNote = useUi((state) => state.openNote);
 
@@ -35,7 +36,6 @@ export function CommandPalette() {
       { id: "research", label: "Research" },
       { id: "library", label: "Library" },
       { id: "skills", label: "Skills" },
-      { id: "settings", label: "Settings" },
     ],
     [],
   );
@@ -92,6 +92,14 @@ export function CommandPalette() {
         label: "Toggle bento / list view",
         run: () =>
           setViewMode(useUi.getState().viewMode === "bento" ? "list" : "bento"),
+      });
+    }
+    if (!query || "settings".includes(query)) {
+      list.push({
+        id: "open-settings",
+        label: "Open settings",
+        hint: "Ctrl+,",
+        run: () => setSettingsOpen(true),
       });
     }
     if (!query || "preview".includes(query)) {

@@ -2,7 +2,6 @@ import {
   BookOpen,
   FlaskConical,
   Library,
-  Settings,
   Sparkles,
 } from "lucide-react";
 import { useUi } from "../stores/ui";
@@ -18,10 +17,9 @@ const TABS: {
   { id: "research", label: "Research", shortcut: "2", icon: FlaskConical },
   { id: "library", label: "Library", shortcut: "3", icon: Library },
   { id: "skills", label: "Skills", shortcut: "4", icon: Sparkles },
-  { id: "settings", label: "Settings", shortcut: "5", icon: Settings },
 ];
 
-/** Top pill navigation bar with keyboard shortcuts Ctrl/Cmd+1..5. */
+/** Top pill navigation bar with keyboard shortcuts Ctrl/Cmd+1..4. */
 export function PillNav() {
   const activeTab = useUi((state) => state.activeTab);
   const setActiveTab = useUi((state) => state.setActiveTab);

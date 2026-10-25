@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, ChevronDown } from "lucide-react";
 
@@ -47,6 +47,8 @@ export function Select({
 }: SelectProps) {
   const [open, setOpen] = useState(false);
   const [rect, setRect] = useState<DOMRect | null>(null);
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const listboxId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -62,7 +64,43 @@ export function Select({
       }
     }
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape") {
+        setOpen(false);
+        return;
+      }
+      // Only navigate when focus is on this control or its menu; otherwise a
+      // keypress in another input would select an option.
+      const target = event.target as Node | null;
+      if (
+        !rootRef.current?.contains(target) &&
+        !menuRef.current?.contains(target)
+      ) {
+        return;
+      }
+      if (options.length === 0) return;
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setActiveIndex((index) =>
+          Math.min(options.length - 1, index < 0 ? 0 : index + 1),
+        );
+      } else if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setActiveIndex((index) => Math.max(0, index <= 0 ? 0 : index - 1));
+      } else if (event.key === "Home") {
+        event.preventDefault();
+        setActiveIndex(0);
+      } else if (event.key === "End") {
+        event.preventDefault();
+        setActiveIndex(options.length - 1);
+      } else if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        const fallback = options.findIndex((option) => option.value === value);
+        const option = options[activeIndex >= 0 ? activeIndex : fallback];
+        if (option) {
+          onChange(option.value);
+          setOpen(false);
+        }
+      }
     }
     function close() {
       setOpen(false);
@@ -87,7 +125,7 @@ export function Select({
       window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", close);
     };
-  }, [open]);
+  }, [open, options, activeIndex, value, onChange]);
 
   const selected = options.find((option) => option.value === value);
   const shape = pill ? "rounded-full" : "rounded-md";
@@ -103,6 +141,7 @@ export function Select({
     return createPortal(
       <div
         ref={menuRef}
+        id={listboxId}
         role="listbox"
         aria-label={ariaLabel}
         style={{
@@ -122,20 +161,23 @@ export function Select({
         {options.length === 0 && (
           <p className="px-2 py-1 text-xs text-neutral-500">No options</p>
         )}
-        {options.map((option) => {
+        {options.map((option, index) => {
           const active = option.value === value;
+          const highlighted = index === activeIndex;
           return (
             <button
               key={option.value}
+              id={`${listboxId}-option-${index}`}
               type="button"
               role="option"
               aria-selected={active}
+              onMouseEnter={() => setActiveIndex(index)}
               onClick={() => {
                 onChange(option.value);
                 setOpen(false);
               }}
               className={`flex w-full items-center justify-between gap-2 rounded px-2 py-1 text-left text-sm ${
-                active
+                highlighted || active
                   ? "bg-neutral-100 dark:bg-neutral-800"
                   : "hover:bg-neutral-100 dark:hover:bg-neutral-800"
               }`}
@@ -155,7 +197,13 @@ export function Select({
       <button
         type="button"
         aria-haspopup="listbox"
+        aria-controls={open ? listboxId : undefined}
         aria-expanded={open}
+        aria-activedescendant={
+          open && activeIndex >= 0
+            ? `${listboxId}-option-${activeIndex}`
+            : undefined
+        }
         aria-label={ariaLabel}
         disabled={disabled}
         onClick={() => {
@@ -163,10 +211,21 @@ export function Select({
             setOpen(false);
             return;
           }
+          const index = options.findIndex((option) => option.value === value);
+          setActiveIndex(index >= 0 ? index : 0);
           setRect(rootRef.current?.getBoundingClientRect() ?? null);
           setOpen(true);
         }}
-        className={`flex w-full items-center justify-between gap-2 ${shape} border border-neutral-300 bg-white ${sizing} text-left text-neutral-900 outline-none disabled:opacity-50 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100`}
+        onKeyDown={(event) => {
+          if (!open && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+            event.preventDefault();
+            const index = options.findIndex((option) => option.value === value);
+            setActiveIndex(index >= 0 ? index : 0);
+            setRect(rootRef.current?.getBoundingClientRect() ?? null);
+            setOpen(true);
+          }
+        }}
+        className={`flex w-full items-center justify-between gap-2 ${shape} border border-neutral-300 bg-white ${sizing} text-left text-neutral-900 outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100`}
       >
         <span className="truncate">{selected?.label ?? placeholder}</span>
         <ChevronDown

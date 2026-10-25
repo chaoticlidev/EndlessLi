@@ -1,22 +1,29 @@
 import { useState } from "react";
-import { Eraser, Play, Plus, Save, Terminal, Trash2 } from "lucide-react";
+import { BookmarkPlus, Copy, Eraser, Play, Plus, Save, Terminal, Trash2 } from "lucide-react";
 import type { ParamValue, Script } from "../../ipc/bindings";
 import {
   errorMessage,
   useDeleteScript,
   useParsedScript,
+  useProjects,
   useRunScript,
   useSaveScript,
+  useSaveScriptOutput,
   useScriptRuntime,
   useScripts,
 } from "../../ipc/queries";
 import { CodeMirrorEditor } from "../../components/CodeMirrorEditor";
+import { Markdown } from "../../components/Markdown";
+import { Select } from "../../components/Select";
 import { EMPTY_VALUES, useWorkspace } from "../../stores/workspace";
 import { ParamFields } from "./ParamFields";
 import { DEFAULT_SCRIPT_TIMEOUT_SECS, NEW_SCRIPT_TEMPLATE } from "./skillsTypes";
 
 const buttonBase =
   "flex items-center gap-1.5 rounded-md border border-neutral-300 px-3 py-1.5 text-sm dark:border-neutral-700";
+
+/** Set once the user has acknowledged what the network toggle does. */
+const NETWORK_NOTICE_KEY = "endlessli.scriptNetworkNoticeAcknowledged";
 
 /** Scripts sub-tab: list on the left, editor and run panel on the right. */
 export function ScriptWorkspace() {
@@ -27,7 +34,6 @@ export function ScriptWorkspace() {
   const [creating, setCreating] = useState(false);
 
   const items = scripts ?? [];
-  // Nothing chosen yet (or the chosen one is gone): fall back to the first.
   const effectiveSelected = creating
     ? null
     : selected && items.some((script) => script.name === selected)
@@ -129,11 +135,18 @@ function ScriptEditor({
   const [timeoutSecs, setTimeoutSecs] = useState(DEFAULT_SCRIPT_TIMEOUT_SECS);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [confirmNetwork, setConfirmNetwork] = useState(false);
+
+  // Save-as-note state
+  const [noteTitle, setNoteTitle] = useState(script?.name ?? "");
+  const [noteProject, setNoteProject] = useState<string | null>(null);
 
   const save = useSaveScript();
   const remove = useDeleteScript();
+  const saveOutput = useSaveScriptOutput();
   const run = useRunScript();
   const parsed = useParsedScript(script);
+  const { data: projects } = useProjects(true);
 
   const values = useWorkspace(
     (state) => state.scriptValues[draftKey] ?? EMPTY_VALUES,
@@ -144,16 +157,52 @@ function ScriptEditor({
   const outcome = useWorkspace((state) =>
     script ? state.scriptOutcomes[script.name] : undefined,
   );
+  const savedNote = useWorkspace((state) =>
+    script ? state.savedNotes[`script:${script.name}`] : undefined,
+  );
+  
   const setValue = useWorkspace((state) => state.setScriptValue);
   const setAllowNetwork = useWorkspace(
     (state) => state.setScriptAllowNetwork,
   );
   const setOutcome = useWorkspace((state) => state.setScriptOutcome);
+  const markSaved = useWorkspace((state) => state.markSavedNote);
   const clearOutput = useWorkspace((state) => state.clearScriptOutput);
+  const clearValues = useWorkspace((state) => state.clearScriptValues);
 
   const parameters = parsed.data?.parameters ?? [];
   const allowNetwork =
     allowOverride ?? parsed.data?.allow_network ?? false;
+
+  const projectOptions = [
+    { value: "", label: "Inbox" },
+    ...(projects ?? [])
+      .filter((project) => !project.archived)
+      .map((project) => ({ value: project.id, label: project.name })),
+  ];
+  const noteLocation = noteProject
+    ? ((projects ?? []).find((project) => project.id === noteProject)?.name ??
+      "project")
+    : "Inbox";
+  const noteTitleValue = noteTitle.trim() || script?.name || "Note";
+  const alreadySaved =
+    outcome !== undefined && savedNote?.output === outcome.stdout;
+
+  function handleNetworkToggle(enabled: boolean) {
+    if (!script) return;
+    if (enabled && localStorage.getItem(NETWORK_NOTICE_KEY) !== "1") {
+      setConfirmNetwork(true);
+      return;
+    }
+    setAllowNetwork(script.name, enabled);
+  }
+
+  function acceptNetwork() {
+    if (!script) return;
+    localStorage.setItem(NETWORK_NOTICE_KEY, "1");
+    setAllowNetwork(script.name, true);
+    setConfirmNetwork(false);
+  }
   const effective = (name: string, fallback: string | null) =>
     (values[name] ?? fallback ?? "").trim();
   const canRun =
@@ -210,6 +259,38 @@ function ScriptEditor({
       setError(errorMessage(err));
     }
   }
+
+  async function handleSaveNote() {
+    if (!script || !outcome) return;
+    setError(null);
+    setNotice(null);
+    try {
+      const note = await saveOutput.mutateAsync({
+        name: script.name,
+        output: outcome.stdout || outcome.stderr || "",
+        title: noteTitleValue,
+        projectId: noteProject,
+      });
+      markSaved(`script:${script.name}`, {
+        title: note.title,
+        location: noteLocation,
+        output: outcome.stdout || outcome.stderr || "",
+      });
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  }
+
+  function handleCopy() {
+    if (!outcome) return;
+    const textToCopy = outcome.stdout || outcome.stderr || "";
+    void navigator.clipboard.writeText(textToCopy).then(
+      () => setNotice("Output copied."),
+      () => setError("Could not copy to the clipboard."),
+    );
+  }
+  
+  
 
   return (
     <div className="flex flex-col gap-3">
@@ -280,12 +361,13 @@ function ScriptEditor({
                 <input
                   type="checkbox"
                   checked={allowNetwork}
-                  onChange={(event) =>
-                    script && setAllowNetwork(script.name, event.target.checked)
-                  }
+                  onChange={(event) => handleNetworkToggle(event.target.checked)}
                 />
                 Allow network
               </label>
+              <span className="text-xs text-neutral-500">
+                Blocks ordinary socket use; a determined script can bypass it.
+              </span>
               <label className="flex items-center gap-1.5">
                 Timeout
                 <input
@@ -310,6 +392,33 @@ function ScriptEditor({
                 {run.isPending ? "Running…" : "Run script"}
               </button>
             </div>
+            {confirmNetwork && (
+              <div className="rounded-md border border-amber-400 bg-amber-50 p-2 text-xs dark:bg-amber-950/30">
+                <p>
+                  Scripts run with your user permissions. This toggle blocks
+                  ordinary socket access, but it is not an OS sandbox: a
+                  determined script can still reach the network (for example
+                  through subprocesses or native APIs). Only enable it for code
+                  you trust.
+                </p>
+                <div className="mt-2 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={acceptNetwork}
+                    className={`${buttonBase} bg-neutral-900 text-white dark:bg-white dark:text-neutral-900`}
+                  >
+                    Enable network
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmNetwork(false)}
+                    className={buttonBase}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
           </>
         )}
 
@@ -324,9 +433,24 @@ function ScriptEditor({
                 <span>exit {outcome.exit_code ?? "?"}</span>
               )}
               <span>{outcome.duration_ms} ms</span>
+              
               <button
                 type="button"
-                onClick={() => script && clearOutput(script.name)}
+                onClick={handleCopy}
+                className="flex items-center gap-1 text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"
+              >
+                <Copy size={12} />
+                Copy
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (script) {
+                    clearOutput(script.name);
+                    clearValues(script.name);
+                  }
+                }}
                 className="flex items-center gap-1 text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"
               >
                 <Eraser size={12} />
@@ -334,9 +458,9 @@ function ScriptEditor({
               </button>
             </div>
             {outcome.stdout && (
-              <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-md border border-neutral-200 bg-neutral-50 p-3 text-xs dark:border-neutral-700 dark:bg-neutral-950">
-                {outcome.stdout}
-              </pre>
+              <div className="markdown-body max-h-80 overflow-y-auto rounded-md border border-neutral-200 p-3 dark:border-neutral-700">
+                <Markdown content={outcome.stdout} />
+              </div>
             )}
             {outcome.stderr && (
               <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded-md border border-red-300 bg-red-50 p-3 text-xs text-red-700 dark:border-red-800 dark:bg-red-950/40 dark:text-red-300">
@@ -346,6 +470,41 @@ function ScriptEditor({
             {!outcome.stdout && !outcome.stderr && (
               <p className="text-xs text-neutral-500">
                 The script produced no output.
+              </p>
+            )}
+            
+            {/* Save as Note UI */}
+            <div className="flex flex-wrap items-center gap-2 border-t border-neutral-200 pt-2 dark:border-neutral-700">
+              <input
+                value={noteTitle}
+                onChange={(event) => setNoteTitle(event.target.value)}
+                placeholder="Note title"
+                className="min-w-40 flex-1 rounded-md border border-neutral-300 bg-transparent px-2 py-1 text-sm outline-none dark:border-neutral-600"
+              />
+              <Select
+                ariaLabel="Project for the saved note"
+                value={noteProject ?? ""}
+                onChange={(value) => setNoteProject(value || null)}
+                options={projectOptions}
+                className="min-w-40"
+              />
+              <button
+                type="button"
+                onClick={() => void handleSaveNote()}
+                disabled={saveOutput.isPending || alreadySaved}
+                className={`${buttonBase} disabled:opacity-40`}
+              >
+                <BookmarkPlus size={14} />
+                {saveOutput.isPending
+                  ? "Saving…"
+                  : alreadySaved
+                    ? "Saved"
+                    : "Save as note"}
+              </button>
+            </div>
+            {alreadySaved && savedNote && (
+              <p className="text-xs text-green-700 dark:text-green-400">
+                Saved to {savedNote.location} as &ldquo;{savedNote.title}&rdquo;.
               </p>
             )}
           </div>

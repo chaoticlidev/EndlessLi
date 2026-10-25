@@ -25,6 +25,7 @@ const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 #[derive(Debug, Clone)]
 pub struct SqliteManager {
     path: PathBuf,
+    key: Option<String>,
 }
 
 impl ManageConnection for SqliteManager {
@@ -33,6 +34,11 @@ impl ManageConnection for SqliteManager {
 
     fn connect(&self) -> Result<Connection, rusqlite::Error> {
         let conn = Connection::open(&self.path)?;
+        // SQLCipher requires the key before any other statement touches the
+        // database (including journal_mode/foreign_keys).
+        if let Some(key) = &self.key {
+            conn.pragma_update(None, "key", key)?;
+        }
         conn.busy_timeout(BUSY_TIMEOUT)?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
@@ -59,6 +65,18 @@ impl Database {
     /// Opens (creating parent directories) the database at `path`, registers
     /// the vector extension, runs pending migrations, and verifies WAL mode.
     pub fn open(path: &Path) -> AppResult<Self> {
+        Self::open_with_key(path, None)
+    }
+
+    /// Opens the database with an optional SQLCipher passphrase. Without the
+    /// `sqlcipher` feature a key is rejected rather than silently ignored.
+    pub fn open_with_key(path: &Path, key: Option<&str>) -> AppResult<Self> {
+        #[cfg(not(feature = "sqlcipher"))]
+        if key.is_some() {
+            return Err(AppError::Database(
+                "this build was compiled without the sqlcipher feature".to_string(),
+            ));
+        }
         if let Some(parent) = path.parent() {
             if !parent.as_os_str().is_empty() {
                 std::fs::create_dir_all(parent)
@@ -68,6 +86,7 @@ impl Database {
         crate::vec::register_extension().map_err(AppError::Internal)?;
         let manager = SqliteManager {
             path: path.to_path_buf(),
+            key: key.map(str::to_string),
         };
         let pool = Pool::builder()
             .max_size(8)

@@ -67,6 +67,19 @@ pub fn memory_update(
     el_db::repo::memory::update_content(&conn, &id, &content)
 }
 
+/// Moves a memory between global and project scope.
+#[tauri::command]
+#[specta::specta]
+pub fn memory_set_scope(
+    state: State<'_, AppState>,
+    id: String,
+    memory_type: String,
+    project_id: Option<String>,
+) -> AppResult<MemoryEntry> {
+    let conn = state.db.connect()?;
+    el_db::repo::memory::update_scope(&conn, &id, &memory_type, project_id.as_deref())
+}
+
 #[tauri::command]
 #[specta::specta]
 pub fn memory_forget(state: State<'_, AppState>, id: String) -> AppResult<()> {

@@ -11,8 +11,6 @@ if (-not (Test-Path -LiteralPath $VenvPython)) {
   $VenvPython = "python"
 }
 
-& $VenvPython -m pip install --upgrade pyinstaller 2>&1 | Out-Null
-
 $OutDir = Join-Path $Root "src-tauri\binaries"
 New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
 
@@ -27,10 +25,13 @@ try {
     --distpath $OutDir `
     --workpath (Join-Path $env:TEMP "endlessli-pyinstaller") `
     --specpath (Join-Path $env:TEMP "endlessli-pyinstaller") `
-    --hidden-import duckduckgo_search `
+    --hidden-import ddgs `
     --hidden-import bs4 `
-    --collect-submodules duckduckgo_search `
-    -m endlessli_sidecar
+    --hidden-import fastembed `
+    --collect-all fastembed `
+    --collect-all onnxruntime `
+    --collect-submodules ddgs `
+    run_sidecar.py
 } finally {
   Pop-Location
 }

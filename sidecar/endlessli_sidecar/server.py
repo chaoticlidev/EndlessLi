@@ -21,6 +21,15 @@ from .chunk import chunk_documents
 from .cluster import kmeans
 from .search import PROVIDERS, ProviderContext, search_with_fallback
 
+#: Payload ceilings for the raw JSON-RPC surface (defense in depth; the Rust
+#: commands also validate before forwarding).
+MAX_EMBED_TEXT_CHARS = 100_000
+MAX_EMBED_TOTAL_CHARS = 1_000_000
+MAX_CHUNK_DOCS = 1_000
+MAX_CHUNK_TOTAL_CHARS = 10_000_000
+MAX_URL_CHARS = 8_192
+MAX_QUERY_CHARS = 8_000
+
 #: JSON-RPC error codes used by this server.
 PARSE_ERROR = -32700
 INVALID_REQUEST = -32600
@@ -71,22 +80,41 @@ def method_search_query(params: Any) -> dict[str, Any]:
     query = params["query"]
     if not isinstance(query, str) or not query.strip():
         raise ParamError("query must be a non-empty string")
+    if len(query) > MAX_QUERY_CHARS:
+        raise ParamError(f"query exceeds the {MAX_QUERY_CHARS}-character limit")
     max_results = params.get("max_results", 10)
     if not isinstance(max_results, int) or max_results < 1:
         raise ParamError("max_results must be a positive integer")
     providers = params.get("providers", ["ddgs"])
     if not isinstance(providers, list) or not providers or not all(isinstance(p, str) for p in providers):
         raise ParamError("providers must be a non-empty string list")
+    safe_search = str(params.get("safe_search", "off") or "off")
+    if safe_search not in {"off", "moderate", "strict"}:
+        safe_search = "off"
     ctx = ProviderContext(
         searxng_url=str(params.get("searxng_url", "") or ""),
         brave_key=str(params.get("brave_key", "") or ""),
+        tavily_key=str(params.get("tavily_key", "") or ""),
+        exa_key=str(params.get("exa_key", "") or ""),
+        keenable_key=str(params.get("keenable_key", "") or ""),
+        firecrawl_key=str(params.get("firecrawl_key", "") or ""),
+        bing_key=str(params.get("bing_key", "") or ""),
+        parallel_key=str(params.get("parallel_key", "") or ""),
+        anysearch_key=str(params.get("anysearch_key", "") or ""),
+        perplexity_key=str(params.get("perplexity_key", "") or ""),
+        serpbase_key=str(params.get("serpbase_key", "") or ""),
+        you_key=str(params.get("you_key", "") or ""),
+        safe_search=safe_search,
     )
     try:
         outcome = search_with_fallback(query.strip(), min(max_results, 20), providers, ctx)
     except (ValueError, RuntimeError) as exc:
         raise ParamError(str(exc)) from exc
-    except Exception as exc:  # noqa: BLE001 - surfaced as JSON-RPC errors
-        raise SidecarError(f"search failed: {exc}") from exc
+    except Exception as exc:  # noqa: BLE001 — never crash the sidecar process
+        import logging
+        logging.getLogger("sidecar").exception("search failed: %s", exc)
+        sys.stderr.flush()
+        return {"provider": "error", "results": []}
     return {
         "provider": outcome.provider,
         "results": [asdict(result) for result in outcome.results],
@@ -101,6 +129,8 @@ def method_clip_url(params: Any) -> dict[str, Any]:
     url = params["url"]
     if not isinstance(url, str) or not url.strip():
         raise ParamError("url must be a non-empty string")
+    if len(url) > MAX_URL_CHARS:
+        raise ParamError(f"url exceeds the {MAX_URL_CHARS}-character limit")
     max_chars = params.get("max_chars", 12_000)
     if not isinstance(max_chars, int) or max_chars < 1:
         raise ParamError("max_chars must be a positive integer")
@@ -137,6 +167,10 @@ def method_embed_texts(params: Any) -> dict[str, Any]:
         raise ParamError("texts must be a non-empty string list")
     if len(texts) > MAX_TEXTS:
         raise ParamError(f"too many texts (max {MAX_TEXTS})")
+    if any(len(text) > MAX_EMBED_TEXT_CHARS for text in texts):
+        raise ParamError(f"a text exceeds the {MAX_EMBED_TEXT_CHARS}-character limit")
+    if sum(len(text) for text in texts) > MAX_EMBED_TOTAL_CHARS:
+        raise ParamError(f"texts exceed the {MAX_EMBED_TOTAL_CHARS}-character limit")
     model = params.get("model")
     if model is not None and not isinstance(model, str):
         raise ParamError("model must be a string")
@@ -170,6 +204,15 @@ def method_chunk_documents(params: Any) -> dict[str, Any]:
     documents = params["documents"]
     if not isinstance(documents, list):
         raise ParamError("documents must be a list")
+    if len(documents) > MAX_CHUNK_DOCS:
+        raise ParamError(f"too many documents (max {MAX_CHUNK_DOCS})")
+    total_chars = sum(
+        len(doc.get("text", ""))
+        for doc in documents
+        if isinstance(doc, dict) and isinstance(doc.get("text"), str)
+    )
+    if total_chars > MAX_CHUNK_TOTAL_CHARS:
+        raise ParamError(f"documents exceed the {MAX_CHUNK_TOTAL_CHARS}-character limit")
     chunk_size = params.get("chunk_size", 800)
     overlap = params.get("overlap", 100)
     if not isinstance(chunk_size, int) or chunk_size < 1:
@@ -258,3 +301,6 @@ def serve(stdin: Any = sys.stdin, stdout: Any = sys.stdout) -> int:
         stdout.write(json.dumps(dispatch(request)) + "\n")
         stdout.flush()
     return 0
+
+if __name__ == "__main__":
+    serve()

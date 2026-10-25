@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import ReactMarkdown from "react-markdown";
-import rehypeSanitize from "rehype-sanitize";
 import { ArrowLeft, Eye, GitBranch, Pencil, Save, Trash2 } from "lucide-react";
 import { useUi } from "../../stores/ui";
 import { CodeMirrorEditor } from "../../components/CodeMirrorEditor";
+import { Markdown } from "../../components/Markdown";
 import { Select } from "../../components/Select";
 import { LinksPanel } from "./LinksPanel";
 import { renderWikilinksAsLinks, wikilinkTitleFromHref } from "./wikilinks";
+import { externalLinkProps, isExternalUrl } from "../../lib/openExternal";
 import type { FolderNode, NoteDetail } from "../../ipc/bindings";
 import {
   errorMessage,
@@ -388,8 +388,8 @@ export function NoteEditor({ noteId }: { noteId: string }) {
         </div>
       ) : (
         <div className="markdown-body rounded-lg border border-neutral-300 bg-white p-4 dark:border-neutral-700 dark:bg-neutral-900">
-          <ReactMarkdown
-            rehypePlugins={[rehypeSanitize]}
+          <Markdown
+            content={renderWikilinksAsLinks(content)}
             components={{
               a: ({ href, children }) => {
                 const target = wikilinkTitleFromHref(href);
@@ -400,16 +400,13 @@ export function NoteEditor({ noteId }: { noteId: string }) {
                     </WikilinkAnchor>
                   );
                 }
-                return (
-                  <a href={href} target="_blank" rel="noreferrer">
-                    {children}
-                  </a>
-                );
+                if (!isExternalUrl(href)) {
+                  return <a href={href}>{children}</a>;
+                }
+                return <a {...externalLinkProps(href)}>{children}</a>;
               },
             }}
-          >
-            {renderWikilinksAsLinks(content)}
-          </ReactMarkdown>
+          />
         </div>
       )}
 

@@ -18,6 +18,7 @@ import {
 import type { LibraryItem, UpdateLibraryItem } from "../../ipc/bindings";
 import { typeLabel } from "./libraryTypes";
 import { Select } from "../../components/Select";
+import { externalLinkProps } from "../../lib/openExternal";
 
 interface Fields {
   title: string;
@@ -223,9 +224,7 @@ export function LibraryItemDetail({
         )}
         {item.url && (
           <a
-            href={item.url}
-            target="_blank"
-            rel="noreferrer"
+            {...externalLinkProps(item.url)}
             className="flex items-center gap-1 text-xs text-blue-700 underline dark:text-blue-400"
           >
             <ExternalLink size={12} />

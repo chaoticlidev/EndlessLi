@@ -18,6 +18,12 @@ use tracing_subscriber::{filter::EnvFilter, layer::SubscriberExt, util::Subscrib
 /// SQLite file name for application logs.
 pub const LOG_DB_FILENAME: &str = "logs.db";
 
+/// Delete log rows older than this on startup.
+const LOG_RETENTION_SECS: i64 = 14 * 24 * 3600;
+
+/// Keep at most this many rows even when they are recent.
+const LOG_MAX_ROWS: i64 = 5_000;
+
 /// Visitor that renders event fields into a single message string.
 struct MessageVisitor {
     message: String,
@@ -66,6 +72,16 @@ impl SqliteLogLayer {
              CREATE INDEX IF NOT EXISTS idx_logs_ts ON logs(ts);",
         )
         .map_err(|err| format!("init logs schema: {err}"))?;
+        // Bounded retention: logs are diagnostics, not user data.
+        let cutoff = chrono::Utc::now().timestamp() - LOG_RETENTION_SECS;
+        db.execute("DELETE FROM logs WHERE ts < ?1", [cutoff])
+            .map_err(|err| format!("prune old logs: {err}"))?;
+        db.execute(
+            "DELETE FROM logs WHERE id NOT IN
+             (SELECT id FROM logs ORDER BY id DESC LIMIT ?1)",
+            [LOG_MAX_ROWS],
+        )
+        .map_err(|err| format!("prune excess logs: {err}"))?;
         Ok(Self {
             db: Arc::new(Mutex::new(db)),
             db_path,
@@ -147,6 +163,45 @@ mod tests {
             )
             .expect("query");
         assert_eq!(count, 1);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn old_and_excess_rows_are_pruned_on_open() {
+        let dir = std::env::temp_dir().join(format!("endlessli-logs-{}", uuid::Uuid::now_v7()));
+        let layer = SqliteLogLayer::open(&dir).expect("open");
+        let old = chrono::Utc::now().timestamp() - LOG_RETENTION_SECS - 60;
+        {
+            let db = layer.db.lock().expect("lock");
+            db.execute(
+                "INSERT INTO logs (ts, level, target, message) VALUES (?1, 'INFO', 'test', 'old')",
+                [old],
+            )
+            .expect("insert old");
+            for index in 0..(LOG_MAX_ROWS + 10) {
+                db.execute(
+                    "INSERT INTO logs (ts, level, target, message) VALUES (?1, 'INFO', 'test', ?2)",
+                    (chrono::Utc::now().timestamp(), format!("recent {index}")),
+                )
+                .expect("insert recent");
+            }
+        }
+        drop(layer);
+        let reopened = SqliteLogLayer::open(&dir).expect("reopen");
+        let db = reopened.db.lock().expect("lock");
+        let old_count: i64 = db
+            .query_row(
+                "SELECT COUNT(*) FROM logs WHERE message = 'old'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count old");
+        let total: i64 = db
+            .query_row("SELECT COUNT(*) FROM logs", [], |row| row.get(0))
+            .expect("count all");
+        assert_eq!(old_count, 0);
+        assert_eq!(total, LOG_MAX_ROWS);
+        drop(db);
         std::fs::remove_dir_all(&dir).ok();
     }
 }

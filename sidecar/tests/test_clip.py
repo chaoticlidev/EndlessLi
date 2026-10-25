@@ -9,6 +9,14 @@ from endlessli_sidecar.clip import clip_url
 
 FIXTURE = Path(__file__).parent / "fixtures" / "article.html"
 
+#: `example.test` does not resolve; tests pretend it points at a public host.
+PUBLIC_ADDRESS = "93.184.216.34"
+
+
+@pytest.fixture(autouse=True)
+def public_dns(monkeypatch):
+    monkeypatch.setattr(clip_module, "_resolve_addresses", lambda host, port: [PUBLIC_ADDRESS])
+
 
 class FakeResponse:
     def __init__(self, text):
@@ -41,7 +49,7 @@ class FakeSession:
     def close(self):
         pass
 
-    def get(self, url, headers=None, timeout=None, stream=False):
+    def get(self, url, headers=None, timeout=None, stream=False, allow_redirects=True):
         self.seen_urls.append(url)
         return FakeResponse(self._text)
 
@@ -78,6 +86,46 @@ def test_refuses_plain_http():
 def test_refuses_non_urls(url):
     with pytest.raises(ValueError):
         clip_url(url)
+
+
+@pytest.mark.parametrize(
+    "host",
+    [
+        "localhost",
+        "127.0.0.1",
+        "10.0.0.5",
+        "192.168.1.10",
+        "172.16.0.1",
+        "169.254.169.254",
+        "[::1]",
+        "[fd00::1]",
+        "metadata.google.internal",
+        "printer.local",
+    ],
+)
+def test_refuses_private_hosts(host):
+    with pytest.raises(ValueError):
+        clip_url(f"https://{host}/admin")
+
+
+def test_refuses_hostname_resolving_to_private_ip(monkeypatch):
+    monkeypatch.setattr(clip_module, "_resolve_addresses", lambda host, port: ["192.168.0.10"])
+    with pytest.raises(ValueError):
+        clip_url("https://rebind.example.test/secret")
+
+
+def test_revalidates_redirect_targets(monkeypatch):
+    class RedirectSession(FakeSession):
+        def get(self, url, headers=None, timeout=None, stream=False, allow_redirects=True):
+            self.seen_urls.append(url)
+            response = FakeResponse("")
+            response.status_code = 302
+            response.headers = {"Location": "https://127.0.0.1/admin"}
+            return response
+
+    monkeypatch.setattr(clip_module.requests, "Session", lambda: RedirectSession(""))
+    with pytest.raises(ValueError):
+        clip_url("https://example.test/start")
 
 
 def test_refuses_non_html(monkeypatch):

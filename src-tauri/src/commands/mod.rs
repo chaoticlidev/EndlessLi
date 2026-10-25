@@ -22,3 +22,4 @@ pub mod secrets;
 pub mod settings;
 pub mod skills;
 pub mod tags;
+pub mod you_mcp;

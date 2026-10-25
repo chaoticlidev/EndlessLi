@@ -4,11 +4,26 @@
 //! so no repository call can forget to index a write.
 
 use el_core::{AppError, AppResult, NewNote, Note, UpdateNote, NOTE_AUTHOR_VALUES};
-use rusqlite::{Connection, Row};
+use el_security::crypto;
+use rusqlite::{Connection, OptionalExtension, Row};
 
 use super::{check_enum, check_not_blank, map_db, new_id, now_ts};
 
 const COLUMNS: &str = "id, title, content, project_id, folder_id, author, source_session_id, created_from_note_id, embedding_model, embedding_hash, created_at, updated_at";
+
+/// IPC payload caps. Notes are large by nature, but a single command should
+/// not be able to hand the database an unbounded string.
+const MAX_NOTE_TITLE_CHARS: usize = 500;
+const MAX_NOTE_CONTENT_CHARS: usize = 2_000_000;
+
+fn check_length(value: &str, label: &str, max: usize) -> AppResult<()> {
+    if value.chars().count() > max {
+        return Err(AppError::InvalidInput(format!(
+            "{label} exceeds the {max}-character limit"
+        )));
+    }
+    Ok(())
+}
 
 pub(crate) fn row_to_note(row: &Row<'_>) -> rusqlite::Result<Note> {
     Ok(Note {
@@ -27,6 +42,38 @@ pub(crate) fn row_to_note(row: &Row<'_>) -> rusqlite::Result<Note> {
     })
 }
 
+/// Decrypts a note's stored fields in place. Plaintext passes through, so
+/// this is safe for projects that never enabled encryption.
+fn decrypt_note(note: &mut Note) -> AppResult<()> {
+    let Some(project_id) = note.project_id.as_deref() else {
+        return Ok(());
+    };
+    if crypto::is_encrypted(&note.title) {
+        note.title = crypto::decrypt_text(project_id, &note.title)?;
+    }
+    if crypto::is_encrypted(&note.content) {
+        note.content = crypto::decrypt_text(project_id, &note.content)?;
+    }
+    Ok(())
+}
+
+/// Encrypts title/content when the destination project is encrypted. Already
+/// encrypted values are left alone so a retry cannot double-encrypt.
+fn encrypt_fields(
+    conn: &Connection,
+    project_id: Option<&str>,
+    title: &str,
+    content: &str,
+) -> AppResult<(String, String)> {
+    match project_id {
+        Some(id) if super::projects::is_encrypted(conn, id)? => Ok((
+            crypto::encrypt_text(id, title)?,
+            crypto::encrypt_text(id, content)?,
+        )),
+        _ => Ok((title.to_string(), content.to_string())),
+    }
+}
+
 fn collect_notes(
     stmt: &mut rusqlite::Statement<'_>,
     params: &[&dyn rusqlite::ToSql],
@@ -34,7 +81,13 @@ fn collect_notes(
     let rows = stmt.query_map(params, row_to_note).map_err(map_db)?;
     let mut out = Vec::new();
     for row in rows {
-        out.push(row.map_err(map_db)?);
+        let mut note = row.map_err(map_db)?;
+        // A missing/corrupt key must not hide the whole list. Surface the
+        // stored value and log the note so the user can see what happened.
+        if let Err(err) = decrypt_note(&mut note) {
+            tracing::warn!(note_id = %note.id, %err, "could not decrypt note; returning stored value");
+        }
+        out.push(note);
     }
     Ok(out)
 }
@@ -43,6 +96,8 @@ fn collect_notes(
 /// `InvalidInput` through the foreign keys.
 pub fn create(conn: &Connection, input: &NewNote) -> AppResult<Note> {
     let title = check_not_blank(&input.title, "note title")?;
+    check_length(&title, "note title", MAX_NOTE_TITLE_CHARS)?;
+    check_length(&input.content, "note content", MAX_NOTE_CONTENT_CHARS)?;
     check_enum(&input.author, NOTE_AUTHOR_VALUES, "author")?;
     let now = now_ts();
     let note = Note {
@@ -59,13 +114,15 @@ pub fn create(conn: &Connection, input: &NewNote) -> AppResult<Note> {
         created_at: now,
         updated_at: now,
     };
+    let (stored_title, stored_content) =
+        encrypt_fields(conn, note.project_id.as_deref(), &note.title, &note.content)?;
     conn.execute(
         "INSERT INTO notes(id, title, content, project_id, folder_id, author, source_session_id, created_from_note_id, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         rusqlite::params![
             note.id,
-            note.title,
-            note.content,
+            stored_title,
+            stored_content,
             note.project_id,
             note.folder_id,
             note.author,
@@ -86,9 +143,24 @@ pub fn get(conn: &Connection, id: &str) -> AppResult<Option<Note>> {
         .map_err(map_db)?;
     let mut rows = stmt.query([id]).map_err(map_db)?;
     match rows.next().map_err(map_db)? {
-        Some(row) => Ok(Some(row_to_note(row).map_err(map_db)?)),
+        Some(row) => {
+            let mut note = row_to_note(row).map_err(map_db)?;
+            decrypt_note(&mut note)?;
+            Ok(Some(note))
+        }
         None => Ok(None),
     }
+}
+
+/// Returns a note's project id without decrypting anything. `None` means the
+/// note does not exist; `Some(None)` means it is an Inbox note. Used by the
+/// embedding worker to skip encrypted projects before loading content.
+pub fn project_id(conn: &Connection, id: &str) -> AppResult<Option<Option<String>>> {
+    conn.query_row("SELECT project_id FROM notes WHERE id = ?1", [id], |row| {
+        row.get::<_, Option<String>>(0)
+    })
+    .optional()
+    .map_err(map_db)
 }
 
 /// Fetches a note by id, or returns `NotFound`.
@@ -170,11 +242,13 @@ pub fn update(conn: &mut Connection, id: &str, patch: &UpdateNote) -> AppResult<
     let mut embedding_stale = false;
     if let Some(title) = &patch.title {
         note.title = check_not_blank(title, "note title")?;
+        check_length(&note.title, "note title", MAX_NOTE_TITLE_CHARS)?;
         // Title feeds the FTS index and the embedding input; any title edit
         // conservatively marks the embedding stale.
         embedding_stale = true;
     }
     if let Some(content) = &patch.content {
+        check_length(content, "note content", MAX_NOTE_CONTENT_CHARS)?;
         if *content != note.content {
             note.content.clone_from(content);
             embedding_stale = true;
@@ -185,13 +259,15 @@ pub fn update(conn: &mut Connection, id: &str, patch: &UpdateNote) -> AppResult<
         note.embedding_model = None;
         note.embedding_hash = None;
     }
+    let (stored_title, stored_content) =
+        encrypt_fields(&tx, note.project_id.as_deref(), &note.title, &note.content)?;
     let affected = tx
         .execute(
             "UPDATE notes SET title = ?1, content = ?2, project_id = ?3, folder_id = ?4,
              embedding_model = ?5, embedding_hash = ?6, updated_at = ?7 WHERE id = ?8",
             rusqlite::params![
-                note.title,
-                note.content,
+                stored_title,
+                stored_content,
                 note.project_id,
                 note.folder_id,
                 note.embedding_model,
@@ -221,10 +297,24 @@ pub fn move_note(
     note.project_id = project_id.map(str::to_string);
     note.folder_id = folder_id.map(str::to_string);
     note.updated_at = now_ts();
+    // Re-encode for the destination project: moving into an encrypted project
+    // encrypts, moving out decrypts. Vectors are invalidated either way so an
+    // encrypted note never keeps a plaintext-derived embedding.
+    let (stored_title, stored_content) =
+        encrypt_fields(conn, note.project_id.as_deref(), &note.title, &note.content)?;
+    crate::vec::delete_embedding(conn, id)?;
     let affected = conn
         .execute(
-            "UPDATE notes SET project_id = ?1, folder_id = ?2, updated_at = ?3 WHERE id = ?4",
-            rusqlite::params![note.project_id, note.folder_id, note.updated_at, id],
+            "UPDATE notes SET project_id = ?1, folder_id = ?2, title = ?3, content = ?4,
+             embedding_model = NULL, embedding_hash = NULL, updated_at = ?5 WHERE id = ?6",
+            rusqlite::params![
+                note.project_id,
+                note.folder_id,
+                stored_title,
+                stored_content,
+                note.updated_at,
+                id
+            ],
         )
         .map_err(map_db)?;
     if affected == 0 {
@@ -254,13 +344,19 @@ pub fn branch(conn: &mut Connection, id: &str, title: Option<&str>) -> AppResult
         created_at: now,
         updated_at: now,
     };
+    let (stored_title, stored_content) = encrypt_fields(
+        &tx,
+        branched.project_id.as_deref(),
+        &branched.title,
+        &branched.content,
+    )?;
     tx.execute(
         "INSERT INTO notes(id, title, content, project_id, folder_id, author, source_session_id, created_from_note_id, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         rusqlite::params![
             branched.id,
-            branched.title,
-            branched.content,
+            stored_title,
+            stored_content,
             branched.project_id,
             branched.folder_id,
             branched.author,
@@ -299,14 +395,56 @@ pub fn delete(conn: &mut Connection, id: &str) -> AppResult<()> {
     Ok(())
 }
 
+/// Raw stored title/content for every note in a project, without decryption.
+/// Used only by the per-project encryption toggle.
+pub fn list_raw_by_project(
+    conn: &Connection,
+    project_id: &str,
+) -> AppResult<Vec<(String, String, String)>> {
+    let mut stmt = conn
+        .prepare("SELECT id, title, content FROM notes WHERE project_id = ?1")
+        .map_err(map_db)?;
+    let rows = stmt
+        .query_map([project_id], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        })
+        .map_err(map_db)?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.map_err(map_db)?);
+    }
+    Ok(out)
+}
+
+/// Writes raw stored title/content and clears the embedding reference.
+/// Used only by the per-project encryption toggle; the caller also deletes
+/// the vector row.
+pub fn set_raw_fields(conn: &Connection, id: &str, title: &str, content: &str) -> AppResult<()> {
+    let affected = conn
+        .execute(
+            "UPDATE notes SET title = ?1, content = ?2,
+             embedding_model = NULL, embedding_hash = NULL WHERE id = ?3",
+            rusqlite::params![title, content, id],
+        )
+        .map_err(map_db)?;
+    if affected == 0 {
+        return Err(AppError::NotFound(format!("note {id}")));
+    }
+    Ok(())
+}
+
 /// Counts notes embedded with `model` versus the total note count. Drives the
 /// Settings embedding-coverage display and the re-embed job.
 pub fn embedding_counts(conn: &Connection, model: &str) -> AppResult<(i64, i64)> {
+    // Encrypted notes are deliberately excluded: embedding them would leak
+    // their plaintext into the vector table.
     conn.query_row(
         "SELECT
            COALESCE(SUM(CASE WHEN embedding_model = ?1 THEN 1 ELSE 0 END), 0),
            COUNT(*)
-         FROM notes",
+         FROM notes
+         WHERE project_id IS NULL
+            OR project_id NOT IN (SELECT id FROM projects WHERE encrypted = 1)",
         [model],
         |row| Ok((row.get(0)?, row.get(1)?)),
     )
@@ -323,7 +461,9 @@ pub fn list_needing_embedding(
     let mut stmt = conn
         .prepare(
             "SELECT id FROM notes
-             WHERE embedding_model IS NULL OR embedding_model != ?1
+             WHERE (embedding_model IS NULL OR embedding_model != ?1)
+               AND (project_id IS NULL
+                    OR project_id NOT IN (SELECT id FROM projects WHERE encrypted = 1))
              ORDER BY updated_at ASC LIMIT ?2",
         )
         .map_err(map_db)?;

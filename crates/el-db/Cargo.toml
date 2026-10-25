@@ -7,6 +7,7 @@ description = "EndlessLi SQLite access, migrations, and repositories (Phase 1)"
 
 [dependencies]
 el-core = { workspace = true }
+el-security = { workspace = true }
 rusqlite = { workspace = true }
 rusqlite_migration = { workspace = true }
 r2d2 = { workspace = true }
@@ -17,6 +18,15 @@ serde_json = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 tracing = { workspace = true }
+
+[features]
+default = []
+# Full-database encryption (Phase 11.3). Build with `--features sqlcipher`.
+# SQLCipher is compiled from source and links the platform OpenSSL; on Windows
+# install `openssl:x64-windows-static` with vcpkg and point OPENSSL_DIR at it
+# (docs/encryption.md). Enabling the key on an existing plaintext database
+# requires `sqlcipher_export`; a fresh database opens encrypted automatically.
+sqlcipher = ["rusqlite/bundled-sqlcipher"]
 
 [dev-dependencies]
 tempfile = "3"

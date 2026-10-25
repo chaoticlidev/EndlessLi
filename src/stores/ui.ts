@@ -1,8 +1,7 @@
 import { create } from "zustand";
 import type { NoteScope } from "../ipc/bindings";
 
-export type TabId =
-  "knowledge" | "research" | "library" | "skills" | "settings";
+export type TabId = "knowledge" | "research" | "library" | "skills";
 export type ViewMode = "bento" | "list";
 export type EditorMode = "source" | "preview";
 
@@ -36,6 +35,10 @@ interface UiState {
   setPaletteOpen: (open: boolean) => void;
   /** Bumped on every open so the palette remounts with fresh state. */
   paletteNonce: number;
+
+  /** Settings is presented as a centered modal rather than a full tab. */
+  settingsOpen: boolean;
+  setSettingsOpen: (open: boolean) => void;
 
   sidebarCollapsed: boolean;
   toggleSidebar: () => void;
@@ -74,6 +77,9 @@ export const useUi = create<UiState>((set, get) => ({
       paletteOpen,
       paletteNonce: paletteOpen ? state.paletteNonce + 1 : state.paletteNonce,
     })),
+
+  settingsOpen: false,
+  setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
 
   sidebarCollapsed: false,
   toggleSidebar: () =>

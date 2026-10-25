@@ -166,6 +166,35 @@ pub fn set_session_status(conn: &Connection, id: &str, status: &str) -> AppResul
     Ok(session)
 }
 
+/// Updates the display query/title of a research session.
+pub fn update_query(conn: &Connection, id: &str, new_query: &str) -> AppResult<()> {
+    let query = check_not_blank(new_query, "query")?;
+    let affected = conn
+        .execute(
+            "UPDATE research_sessions SET query = ?1 WHERE id = ?2",
+            rusqlite::params![query, id],
+        )
+        .map_err(map_db)?;
+    if affected == 0 {
+        return Err(AppError::NotFound(format!("session {id}")));
+    }
+    Ok(())
+}
+
+/// Deletes a session along with its steps, results, and note attachments.
+///
+/// Saved notes survive: `notes.source_session_id` is `ON DELETE SET NULL`,
+/// so they keep their content and only lose the back-reference.
+pub fn delete_session(conn: &Connection, id: &str) -> AppResult<()> {
+    let affected = conn
+        .execute("DELETE FROM research_sessions WHERE id = ?1", [id])
+        .map_err(map_db)?;
+    if affected == 0 {
+        return Err(AppError::NotFound(format!("session {id}")));
+    }
+    Ok(())
+}
+
 /// Adds a step, assigning the next `step_order` within its parent scope.
 pub fn add_step(conn: &Connection, input: &NewStep) -> AppResult<ResearchStep> {
     check_not_blank(&input.description, "step description")?;
@@ -223,13 +252,26 @@ pub fn list_steps(conn: &Connection, session_id: &str) -> AppResult<Vec<Research
 
 /// Moves a step to a new status.
 pub fn set_step_status(conn: &Connection, id: &str, status: &str) -> AppResult<()> {
+    set_step_status_with_details(conn, id, status, None)
+}
+
+pub fn set_step_status_with_details(conn: &Connection, id: &str, status: &str, details: Option<String>) -> AppResult<()> {
     check_enum(status, STEP_STATUS_VALUES, "status")?;
-    let affected = conn
-        .execute(
-            "UPDATE research_steps SET status = ?1 WHERE id = ?2",
-            (status, id),
-        )
-        .map_err(map_db)?;
+    let affected = if let Some(details) = details {
+        conn
+            .execute(
+                "UPDATE research_steps SET status = ?1, details = ?2 WHERE id = ?3",
+                (status, details, id),
+            )
+            .map_err(map_db)?
+    } else {
+        conn
+            .execute(
+                "UPDATE research_steps SET status = ?1 WHERE id = ?2",
+                (status, id),
+            )
+            .map_err(map_db)?
+    };
     if affected == 0 {
         return Err(AppError::NotFound(format!("step {id}")));
     }

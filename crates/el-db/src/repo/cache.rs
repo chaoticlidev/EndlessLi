@@ -313,3 +313,20 @@ pub fn delete_setting(conn: &Connection, key: &str) -> AppResult<()> {
         .map_err(map_db)?;
     Ok(())
 }
+
+/// Lists setting keys beginning with `prefix`, sorted. Used by the startup
+/// sweep that removes the retired plaintext API-key fallback rows.
+pub fn list_setting_keys(conn: &Connection, prefix: &str) -> AppResult<Vec<String>> {
+    let pattern = format!("{prefix}%");
+    let mut stmt = conn
+        .prepare("SELECT key FROM settings WHERE key LIKE ?1 ORDER BY key")
+        .map_err(map_db)?;
+    let rows = stmt
+        .query_map([pattern], |row| row.get(0))
+        .map_err(map_db)?;
+    let mut keys = Vec::new();
+    for row in rows {
+        keys.push(row.map_err(map_db)?);
+    }
+    Ok(keys)
+}

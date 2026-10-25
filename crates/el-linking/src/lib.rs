@@ -128,6 +128,13 @@ pub async fn embed_note<E: Embedder>(
 ) -> AppResult<bool> {
     let note = {
         let conn = db.connect()?;
+        // Encrypted notes are never embedded: the vector table is plaintext,
+        // so a vector would leak the content it is supposed to protect.
+        if let Some(Some(project_id)) = note_repo::project_id(&conn, note_id)? {
+            if el_db::repo::projects::is_encrypted(&conn, &project_id)? {
+                return Ok(false);
+            }
+        }
         match note_repo::get(&conn, note_id)? {
             Some(note) => note,
             None => return Ok(false),

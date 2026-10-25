@@ -36,6 +36,17 @@ pub async fn compression_start(
             "documents must not be empty".to_string(),
         ));
     }
+    if documents.len() > 1_000 {
+        return Err(AppError::InvalidInput(
+            "too many documents (max 1,000)".to_string(),
+        ));
+    }
+    let total_chars: usize = documents.iter().map(|doc| doc.text.chars().count()).sum();
+    if total_chars > 10_000_000 {
+        return Err(AppError::InvalidInput(
+            "documents exceed the 10,000,000-character limit".to_string(),
+        ));
+    }
     let analytics = state
         .analytics
         .as_ref()

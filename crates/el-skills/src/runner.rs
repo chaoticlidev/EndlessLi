@@ -16,7 +16,7 @@ const SKILL_TEMPERATURE: f32 = 0.2;
 
 /// Room for a substantial generated document without unbounded cost. Reasoning
 /// models count their hidden tokens against this budget, so leave headroom.
-const SKILL_MAX_TOKENS: u32 = 4096;
+const SKILL_MAX_TOKENS: u32 = 50000;
 
 /// The result of running one skill.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type)]

@@ -15,9 +15,14 @@ use el_research::research::{is_cancelled, ChannelSink, RunConfig};
 use el_research::tools::{ClipDoc, ResearchTools, SearchHit};
 use serde::{Deserialize, Serialize};
 use tauri::State;
+use tokio::sync::Semaphore;
 use tokio_util::sync::CancellationToken;
 
 use crate::state::AppState;
+
+/// Maximum concurrent sidecar RPC calls to avoid overwhelming the Python
+/// process during Deep Dive parallelism.
+const SIDECAR_CONCURRENCY: usize = 2;
 
 /// Progress on one research step, fanned out as `research://step`.
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
@@ -56,6 +61,9 @@ pub struct ResearchView {
 struct SidecarTools {
     db: el_db::Database,
     sidecar: crate::sidecar::SidecarManager,
+    /// Limits concurrent sidecar RPC calls to 2 so the Python process
+    /// never gets overwhelmed during Deep Dive parallelism.
+    concurrency: Arc<Semaphore>,
 }
 
 impl ResearchTools for SidecarTools {
@@ -66,6 +74,17 @@ impl ResearchTools for SidecarTools {
         providers: &[String],
         searxng_url: Option<&str>,
         brave_key: Option<&str>,
+        tavily_key: Option<&str>,
+        exa_key: Option<&str>,
+        keenable_key: Option<&str>,
+        firecrawl_key: Option<&str>,
+        bing_key: Option<&str>,
+        parallel_key: Option<&str>,
+        anysearch_key: Option<&str>,
+        perplexity_key: Option<&str>,
+        serpbase_key: Option<&str>,
+        you_key: Option<&str>,
+        safe_search: &str,
     ) -> AppResult<(Vec<SearchHit>, String)> {
         let model = providers.join("+");
         let (bytes, _) = el_cache::get_or_compute(
@@ -77,28 +96,93 @@ impl ResearchTools for SidecarTools {
                 ttl_secs: None,
             },
             || async {
-                let response = self
-                    .sidecar
-                    .call(
-                        "search.query",
-                        serde_json::json!({
-                            "query": query,
-                            "max_results": max_results,
-                            "providers": providers,
-                            "searxng_url": searxng_url.unwrap_or(""),
-                            "brave_key": brave_key.unwrap_or(""),
-                        }),
-                    )
-                    .await?;
+                let _permit = self
+                    .concurrency
+                    .acquire()
+                    .await
+                    .map_err(|_| AppError::Internal("sidecar semaphore closed".to_string()))?;
+                let sidecar_result = self.sidecar.call(
+                    "search.query",
+                    serde_json::json!({
+                        "query": query,
+                        "max_results": max_results,
+                        "providers": providers,
+                        "searxng_url": searxng_url.unwrap_or(""),
+                        "brave_key": brave_key.unwrap_or(""),
+                        "tavily_key": tavily_key.unwrap_or(""),
+                        "exa_key": exa_key.unwrap_or(""),
+                        "keenable_key": keenable_key.unwrap_or(""),
+                        "firecrawl_key": firecrawl_key.unwrap_or(""),
+                        "bing_key": bing_key.unwrap_or(""),
+                        "parallel_key": parallel_key.unwrap_or(""),
+                        "anysearch_key": anysearch_key.unwrap_or(""),
+                        "perplexity_key": perplexity_key.unwrap_or(""),
+                        "serpbase_key": serpbase_key.unwrap_or(""),
+                        "you_key": you_key.unwrap_or(""),
+                        "safe_search": safe_search,
+                    }),
+                ).await;
+                let response = match sidecar_result {
+                    Ok(resp) => resp,
+                    Err(err) => {
+                        tracing::warn!(error = %err, "sidecar search failed; trying You.com MCP fallback");
+                        if you_key.is_some() {
+                            let mcp_hits = crate::commands::you_mcp::search(query, max_results).await.unwrap_or_default();
+                            if !mcp_hits.is_empty() {
+                                return Ok(el_cache::CacheValue {
+                                    bytes: serde_json::json!({"provider": "you", "results": []})
+                                        .to_string()
+                                        .into_bytes(),
+                                    source_type: "you".to_string(),
+                                });
+                            }
+                        }
+                        return Err(err);
+                    }
+                };
                 let provider = response
                     .get("provider")
                     .and_then(|provider| provider.as_str())
                     .unwrap_or("unknown")
                     .to_string();
+                let mut hits: Vec<SearchHit> = Vec::new();
+                if let Some(results) = response
+                    .get("results")
+                    .and_then(|results| results.as_array())
+                {
+                    for result in results {
+                        let url = result.get("url").and_then(|url| url.as_str()).unwrap_or("");
+                        if url.is_empty() {
+                            continue;
+                        }
+                        hits.push(SearchHit {
+                            title: result
+                                .get("title")
+                                .and_then(|title| title.as_str())
+                                .unwrap_or("")
+                                .to_string(),
+                            url: url.to_string(),
+                            snippet: result
+                                .get("snippet")
+                                .and_then(|snippet| snippet.as_str())
+                                .unwrap_or("")
+                                .to_string(),
+                        });
+                    }
+                }
+                // If the sidecar returned no hits but You.com MCP is
+                // available, try that as a last-resort fallback before
+                // giving up on the whole chain.
+                if hits.is_empty() && you_key.is_some() {
+                    let mcp_hits = crate::commands::you_mcp::search(query, max_results).await.unwrap_or_default();
+                    if !mcp_hits.is_empty() {
+                        hits = mcp_hits;
+                    }
+                }
                 Ok(el_cache::CacheValue {
-                    bytes: serde_json::to_vec(&response).map_err(|err| {
-                        AppError::Internal(format!("encode search response: {err}"))
-                    })?,
+                    bytes: serde_json::json!({"provider": provider, "results": hits})
+                        .to_string()
+                        .into_bytes(),
                     source_type: provider,
                 })
             },
@@ -149,6 +233,11 @@ impl ResearchTools for SidecarTools {
                 ttl_secs: None,
             },
             || async {
+                let _permit = self
+                    .concurrency
+                    .acquire()
+                    .await
+                    .map_err(|_| AppError::Internal("sidecar semaphore closed".to_string()))?;
                 let response = self
                     .sidecar
                     .call(
@@ -210,6 +299,18 @@ pub async fn research_start(
             "query must not be blank".to_string(),
         ));
     }
+    if query.chars().count() > 8_000 {
+        return Err(AppError::InvalidInput(
+            "query exceeds the 8,000-character limit".to_string(),
+        ));
+    }
+    if let Some(memory) = &session_memory {
+        if memory.chars().count() > 50_000 {
+            return Err(AppError::InvalidInput(
+                "session memory exceeds the 50,000-character limit".to_string(),
+            ));
+        }
+    }
     if mode != "light" && mode != "deep" {
         return Err(AppError::InvalidInput(
             "mode must be light or deep".to_string(),
@@ -255,6 +356,7 @@ pub async fn research_start(
         let tools = Arc::new(SidecarTools {
             db: task_state.db.clone(),
             sidecar: task_state.sidecar.clone(),
+            concurrency: Arc::new(Semaphore::new(SIDECAR_CONCURRENCY)),
         });
         let sink = Arc::new(ChannelSink::new(task_state.research_tx.clone()));
         let outcome = if task_mode == "deep" {
@@ -321,11 +423,41 @@ fn run_config(
         Some(raw) => serde_json::from_str(&raw).unwrap_or_else(|_| vec!["ddgs".to_string()]),
         None => vec!["ddgs".to_string()],
     };
+    let safe_search = get("research.safe_search")?.unwrap_or_else(|| "off".to_string());
+    if safe_search != "off" && safe_search != "strict" && safe_search != "moderate" {
+        tracing::warn!(safe_search, "invalid safe_search value; defaulting to off");
+    }
+    let safe_level = if safe_search == "strict" || safe_search == "moderate" {
+        safe_search.as_str()
+    } else {
+        "off"
+    };
     let brave_key = el_security::load_api_key("brave").ok();
+    let tavily_key = el_security::load_api_key("tavily").ok();
+    let exa_key = el_security::load_api_key("exa").ok();
+    let keenable_key = el_security::load_api_key("keenable").ok();
+    let firecrawl_key = el_security::load_api_key("firecrawl").ok();
+    let bing_key = el_security::load_api_key("bing").ok();
+    let parallel_key = el_security::load_api_key("parallel").ok();
+    let anysearch_key = el_security::load_api_key("anysearch").ok();
+    let perplexity_key = el_security::load_api_key("perplexity").ok();
+    let serpbase_key = el_security::load_api_key("serpbase").ok();
+    let you_key = el_security::load_api_key("you").ok();
     Ok(RunConfig {
         providers,
         searxng_url: get("research.searxng_url")?.filter(|url| !url.trim().is_empty()),
         brave_key,
+        tavily_key,
+        exa_key,
+        keenable_key,
+        firecrawl_key,
+        bing_key,
+        parallel_key,
+        anysearch_key,
+        perplexity_key,
+        serpbase_key,
+        you_key,
+        safe_search: safe_level.to_string(),
         clip_count: get("research.clip_count")?
             .and_then(|raw| raw.trim().parse().ok())
             .unwrap_or(el_research::DEFAULT_CLIP_COUNT),
@@ -371,6 +503,21 @@ fn emit_status(state: &AppState, session_id: &str, status: &str) {
 pub fn research_cancel(state: State<'_, AppState>, session_id: String) -> AppResult<()> {
     state.research.cancel(&session_id);
     Ok(())
+}
+
+/// Deletes a session, its steps, and its results.
+///
+/// Saved notes are preserved: the schema clears `notes.source_session_id`
+/// (`ON DELETE SET NULL`) instead of deleting the row. A run still in flight
+/// is cancelled first and winds down at its next checkpoint.
+#[tauri::command]
+#[specta::specta]
+pub fn research_delete(state: State<'_, AppState>, session_id: String) -> AppResult<()> {
+    if state.research.cancel(&session_id) {
+        tracing::info!(session_id = %session_id, "cancelled run while deleting session");
+    }
+    let conn = state.db.connect()?;
+    el_db::repo::research::delete_session(&conn, &session_id)
 }
 
 /// Fetches full session state for the dashboard run view.
@@ -497,4 +644,16 @@ pub fn research_save_results(
 #[specta::specta]
 pub fn sidecar_status(state: State<'_, AppState>) -> AppResult<String> {
     Ok(format!("{:?}", state.sidecar.status()))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn research_rename(
+    state: tauri::State<'_, AppState>,
+    session_id: String,
+    new_title: String,
+) -> Result<(), AppError> {
+    let conn = state.db.connect()?;
+    el_db::repo::research::update_query(&conn, &session_id, &new_title)?;
+    Ok(())
 }

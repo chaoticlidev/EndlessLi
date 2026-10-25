@@ -13,7 +13,19 @@ export const commands = {
 	projectUpdate: (id: string, patch: UpdateProject) => typedError<Project, AppError>(__TAURI_INVOKE("project_update", { id, patch })),
 	/**  Archives or unarchives a project. */
 	projectArchive: (id: string, archived: boolean) => typedError<null, AppError>(__TAURI_INVOKE("project_archive", { id, archived })),
-	/**  Deletes a project. Folders cascade; member notes move to no project. */
+	/**
+	 *  Encrypts or decrypts every note in a project (Phase 11.2).
+	 * 
+	 *  Enabling generates a key in the OS keychain, encrypts the project's notes
+	 *  in one transaction, and deletes their vectors. Disabling decrypts every
+	 *  note, removes the key, and queues the notes for re-embedding.
+	 */
+	projectEncryptionSet: (id: string, enabled: boolean) => typedError<Project, AppError>(__TAURI_INVOKE("project_encryption_set", { id, enabled })),
+	/**
+	 *  Deletes a project. Folders cascade; member notes move to no project.
+	 *  Encrypted projects decrypt their notes first, otherwise the foreign-key
+	 *  action would leave orphaned ciphertext with no project key.
+	 */
 	projectDelete: (id: string) => typedError<null, AppError>(__TAURI_INVOKE("project_delete", { id })),
 	/**  Lists a project's folders as a nested tree, oldest-first at each level. */
 	folderTree: (projectId: string) => typedError<FolderNode[], AppError>(__TAURI_INVOKE("folder_tree", { projectId })),
@@ -142,6 +154,8 @@ export const commands = {
 	memoryListForgotten: () => typedError<MemoryEntry[], AppError>(__TAURI_INVOKE("memory_list_forgotten")),
 	memoryCreate: (memoryType: string, projectId: string | null, content: string, expiresAt: number | null) => typedError<MemoryEntry, AppError>(__TAURI_INVOKE("memory_create", { memoryType, projectId, content, expiresAt })),
 	memoryUpdate: (id: string, content: string) => typedError<MemoryEntry, AppError>(__TAURI_INVOKE("memory_update", { id, content })),
+	/**  Moves a memory between global and project scope. */
+	memorySetScope: (id: string, memoryType: string, projectId: string | null) => typedError<MemoryEntry, AppError>(__TAURI_INVOKE("memory_set_scope", { id, memoryType, projectId })),
 	memoryForget: (id: string) => typedError<null, AppError>(__TAURI_INVOKE("memory_forget", { id })),
 	memoryRestore: (id: string) => typedError<null, AppError>(__TAURI_INVOKE("memory_restore", { id })),
 	memoryDelete: (id: string) => typedError<null, AppError>(__TAURI_INVOKE("memory_delete", { id })),
@@ -170,7 +184,6 @@ export const commands = {
 	settingsGet: (key: string) => typedError<string | null, AppError>(__TAURI_INVOKE("settings_get", { key })),
 	/**  Writes one setting value (JSON), replacing any previous value. */
 	settingsUpdate: (key: string, value: string) => typedError<null, AppError>(__TAURI_INVOKE("settings_update", { key, value })),
-	/**  Stores (or replaces) a provider API key. */
 	apiKeySet: (provider: string, key: string) => typedError<null, AppError>(__TAURI_INVOKE("api_key_set", { provider, key })),
 	/**  Removes a provider API key. Succeeds when none was stored. */
 	apiKeyDelete: (provider: string) => typedError<null, AppError>(__TAURI_INVOKE("api_key_delete", { provider })),
@@ -196,6 +209,14 @@ export const commands = {
 	/**  Stops a running session. Partial steps and results are kept. */
 	researchCancel: (sessionId: string) => typedError<null, AppError>(__TAURI_INVOKE("research_cancel", { sessionId })),
 	/**
+	 *  Deletes a session, its steps, and its results.
+	 * 
+	 *  Saved notes are preserved: the schema clears `notes.source_session_id`
+	 *  (`ON DELETE SET NULL`) instead of deleting the row. A run still in flight
+	 *  is cancelled first and winds down at its next checkpoint.
+	 */
+	researchDelete: (sessionId: string) => typedError<null, AppError>(__TAURI_INVOKE("research_delete", { sessionId })),
+	/**
 	 *  Fetches full session state for the dashboard run view.
 	 * 
 	 *  A session left `pending`/`in_progress` with no tracked run (crashed app,
@@ -209,6 +230,7 @@ export const commands = {
 } | null, AppError>(__TAURI_INVOKE("research_get", { sessionId })),
 	/**  Lists sessions newest-first for the history panel. */
 	researchHistory: (limit: number) => typedError<ResearchSession[], AppError>(__TAURI_INVOKE("research_history", { limit })),
+	researchRename: (sessionId: string, newTitle: string) => typedError<null, AppError>(__TAURI_INVOKE("research_rename", { sessionId, newTitle })),
 	/**
 	 *  Marks results for saving, then saves them as one AI-authored note.
 	 *  The note content carries the source list, so every saved note traces
@@ -279,6 +301,8 @@ export const commands = {
 	scriptRun: (name: string, values: ParamValue[], allowNetwork: boolean | null, timeoutSecs: number | null) => typedError<ScriptOutcome, AppError>(__TAURI_INVOKE("script_run", { name, values, allowNetwork, timeoutSecs })),
 	/**  Reports whether a Python interpreter is available for the Scripts tab. */
 	scriptRuntime: () => typedError<ScriptRuntime, AppError>(__TAURI_INVOKE("script_runtime")),
+	/**  Saves a script's output as an AI-authored note. */
+	scriptSaveOutput: (name: string, output: string, title: string | null, projectId: string | null, folderId: string | null) => typedError<Note, AppError>(__TAURI_INVOKE("script_save_output", { name, output, title, projectId, folderId })),
 };
 
 /** Events */

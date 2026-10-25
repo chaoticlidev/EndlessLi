@@ -1,7 +1,29 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window. Minimal permissions for Phase 0; extended per-phase.",
+  "description": "Capability for the main window.",
   "windows": ["main"],
-  "permissions": ["core:default", "opener:default"]
+  "permissions": [
+    "core:default",
+    "opener:allow-open-url",
+    "opener:allow-default-urls",
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        {
+          "name": "endlessli-sidecar",
+          "sidecar": true
+        }
+      ]
+    },
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        {
+          "name": "endlessli-sidecar",
+          "sidecar": true
+        }
+      ]
+    }
+  ]
 }

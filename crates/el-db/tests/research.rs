@@ -138,6 +138,65 @@ fn steps_and_results_keep_order() {
 }
 
 #[test]
+fn delete_session_cascades_children_but_keeps_notes() {
+    let test = TestDb::setup();
+    let conn = test.conn();
+    let s = session(&conn);
+    research::add_step(
+        &conn,
+        &NewStep {
+            session_id: s.id.clone(),
+            parent_step_id: None,
+            description: "search".to_string(),
+            status: "completed".to_string(),
+            details: None,
+        },
+    )
+    .unwrap();
+    research::add_result(
+        &conn,
+        &NewResult {
+            session_id: s.id.clone(),
+            result_type: "summary".to_string(),
+            content: "summary".to_string(),
+            source_url: None,
+            source_title: None,
+        },
+    )
+    .unwrap();
+    let n = notes::create(
+        &conn,
+        &NewNote {
+            title: "saved".to_string(),
+            content: "body".to_string(),
+            project_id: None,
+            folder_id: None,
+            author: "ai".to_string(),
+            source_session_id: Some(s.id.clone()),
+            created_from_note_id: None,
+        },
+    )
+    .unwrap();
+    research::attach_note(&conn, &s.id, &n.id).unwrap();
+
+    research::delete_session(&conn, &s.id).unwrap();
+
+    assert!(research::get_session(&conn, &s.id).unwrap().is_none());
+    assert!(research::list_steps(&conn, &s.id).unwrap().is_empty());
+    assert!(research::list_results(&conn, &s.id).unwrap().is_empty());
+
+    // The note survives and loses only its session back-reference.
+    let kept = notes::get(&conn, &n.id).unwrap().expect("note was deleted");
+    assert_eq!(kept.title, "saved");
+    assert!(kept.source_session_id.is_none());
+
+    assert!(research::delete_session(&conn, &s.id).is_err());
+
+    drop(conn);
+    test.finish();
+}
+
+#[test]
 fn session_notes_and_token_accounting() {
     let test = TestDb::setup();
     let conn = test.conn();

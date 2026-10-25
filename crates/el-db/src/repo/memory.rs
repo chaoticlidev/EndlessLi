@@ -141,6 +141,32 @@ pub fn update_content(conn: &Connection, id: &str, content: &str) -> AppResult<M
     get_entry(conn, id)?.ok_or_else(|| AppError::NotFound(format!("memory {id}")))
 }
 
+/// Moves an entry between global and project scope. The schema requires a
+/// project id exactly when the type is `project`.
+pub fn update_scope(
+    conn: &Connection,
+    id: &str,
+    memory_type: &str,
+    project_id: Option<&str>,
+) -> AppResult<MemoryEntry> {
+    check_enum(memory_type, MEMORY_TYPE_VALUES, "memory type")?;
+    if (memory_type == "project") != project_id.is_some() {
+        return Err(AppError::InvalidInput(
+            "project memories require a project and global memories must not have one".to_string(),
+        ));
+    }
+    let affected = conn
+        .execute(
+            "UPDATE memory_entries SET type = ?1, project_id = ?2 WHERE id = ?3",
+            rusqlite::params![memory_type, project_id, id],
+        )
+        .map_err(map_db)?;
+    if affected == 0 {
+        return Err(AppError::NotFound(format!("memory {id}")));
+    }
+    get_entry(conn, id)?.ok_or_else(|| AppError::NotFound(format!("memory {id}")))
+}
+
 /// Fetches an entry by id, or `None` when it does not exist.
 pub fn get_entry(conn: &Connection, id: &str) -> AppResult<Option<MemoryEntry>> {
     let mut stmt = conn

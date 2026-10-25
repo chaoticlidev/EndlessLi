@@ -5,6 +5,32 @@ use rusqlite::{Connection, Row};
 
 use super::{bool_param, check_not_blank, get_bool, map_db, new_id, now_ts};
 
+/// True when the project's notes are encrypted at rest.
+pub fn is_encrypted(conn: &Connection, id: &str) -> AppResult<bool> {
+    conn.query_row(
+        "SELECT encrypted FROM projects WHERE id = ?1",
+        [id],
+        |row| row.get::<_, i64>(0),
+    )
+    .map(|value| value != 0)
+    .map_err(map_db)
+}
+
+/// Sets the encryption flag. The caller is responsible for transforming the
+/// project's notes and managing the keychain key.
+pub fn set_encrypted(conn: &Connection, id: &str, encrypted: bool) -> AppResult<()> {
+    let affected = conn
+        .execute(
+            "UPDATE projects SET encrypted = ?1 WHERE id = ?2",
+            rusqlite::params![bool_param(encrypted), id],
+        )
+        .map_err(map_db)?;
+    if affected == 0 {
+        return Err(AppError::NotFound(format!("project {id}")));
+    }
+    Ok(())
+}
+
 const COLUMNS: &str =
     "id, name, description, icon, color, system_prompt, encrypted, archived, created_at";
 

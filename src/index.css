@@ -6,6 +6,18 @@
   --color-surface: #f6f6f6;
   --color-surface-dark: #2f2f2f;
   --color-accent: #396cd8;
+
+  /* Semantic theme tokens. The modal and surfaces reference these via the
+     `background`, `foreground`, `card`, and `border` color names below so the
+     palette can be restyled later by swapping the `--*` variables only.
+
+     Defined with `hsl(var(--x))` (the Tailwind v4 canonical pattern) so the
+     `bg-card` / `bg-background` / `text-foreground` / `border-border` utilities
+     resolve to OUR variables instead of Tailwind's default slate fallback. */
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-border: hsl(var(--border));
 }
 
 :root {
@@ -18,11 +30,23 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   -webkit-text-size-adjust: 100%;
+
+  /* Pitch-black theme surface tokens (light default, see `.dark` overrides).
+     Used by the Settings modal and its dropdowns only; the app frame uses
+     neutral tokens, so these can be dark without affecting the page chrome. */
+  --background: 0 0% 0%;
+  --foreground: 0 0% 97%;
+  --card: 240 10% 4%;
+  --border: 210 12% 22%;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     color-scheme: dark;
+    --background: 0 0% 0%;
+    --foreground: 0 0% 97%;
+    --card: 240 10% 4%;
+    --border: 210 12% 22%;
   }
 }
 
@@ -156,4 +180,43 @@ body {
 
 .markdown-body a {
   color: var(--color-accent);
+}
+
+/* Keyboard focus must stay visible on every interactive control, including
+   the custom dropdowns and icon-only buttons. */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* Respect the OS reduced-motion preference for the app's transitions. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Settings modal internal scrollbar: thin and unobtrusive. Only applied to the
+   right-hand content pane, never to the full page or the fixed sidebar. */
+.settings-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.settings-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.settings-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.settings-scroll::-webkit-scrollbar-thumb {
+  background-color: var(--border);
+  border-radius: 4px;
 }

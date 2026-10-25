@@ -34,6 +34,12 @@ pub struct AppState {
     pub log_db_path: PathBuf,
 }
 
+impl AppState {
+    pub fn kill_sidecar(&self) {
+        self.sidecar.kill();
+    }
+}
+
 /// Note ids awaiting embedding, plus the wake signal the worker waits on.
 ///
 /// A `HashSet` de-duplicates: saving the same note ten times queues it once.

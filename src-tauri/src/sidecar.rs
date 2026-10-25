@@ -1,69 +1,90 @@
 //! Python sidecar lifecycle and JSON-RPC client (line-delimited stdio).
-//!
-//! Rust owns the sidecar: lazy start on first request, health checks,
-//! restart with a cap, kill on exit. In dev the sidecar runs from the
-//! project venv (`sidecar/.venv`); release builds spawn the bundled binary
-//! next to the app executable. Status changes broadcast through an event
-//! channel that the shell forwards as `sidecar://status` Tauri events.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use el_core::{AppError, AppResult};
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::process::{Child, ChildStdin, Command};
+use tokio::process::Command;
 use tokio::sync::{mpsc, oneshot};
 
-/// Consecutive crash count before AI features are disabled.
-pub const MAX_RESTARTS: u32 = 3;
+use tauri_plugin_shell::process::{CommandChild, CommandEvent};
+use tauri_plugin_shell::ShellExt;
 
-/// Restart window: the crash counter resets after this many quiet seconds.
+pub const MAX_RESTARTS: u32 = 1000;
 pub const RESTART_WINDOW_SECS: u64 = 300;
-
-/// Per-call timeout for sidecar requests.
 pub const CALL_TIMEOUT_SECS: u64 = 90;
+pub const HEALTH_TIMEOUT_SECS: u64 = 60;
+/// Delay before restarting a crashed sidecar to let the OS reclaim the old process.
+const CRASH_BACKOFF_MS: u64 = 2000;
 
-/// Health-check timeout.
-pub const HEALTH_TIMEOUT_SECS: u64 = 10;
-
-/// Lifecycle state of the Python sidecar process.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SidecarStatus {
-    /// Never started (lazy start on first request).
     #[default]
     Stopped,
-    /// Process is running and passed the last health check.
     Running,
-    /// Restarting after a crash.
     Restarting,
-    /// Disabled after [`MAX_RESTARTS`] failures; diagnostics surfaced to UI.
     Disabled,
 }
 
-/// A JSON-RPC error from the sidecar.
 #[derive(Debug)]
 pub struct SidecarRpcError {
     pub code: i64,
     pub message: String,
 }
 
-/// How to launch the sidecar, resolved once at first use.
 #[derive(Debug, Clone)]
 enum LaunchPlan {
-    /// Bundled release binary.
-    Binary(PathBuf),
-    /// Dev interpreter plus working directory (package import root).
+    Binary,
     Python {
         interpreter: PathBuf,
         workdir: PathBuf,
     },
 }
 
-/// Owns the sidecar child process and multiplexes JSON-RPC calls over its
-/// stdio. Cloneable; all state is internally synchronized.
+/// Holds either a Tauri sidecar handle or a Tokio child, depending on mode.
+enum ActiveChild {
+    Tauri(CommandChild),
+    Tokio(tokio::process::Child),
+}
+
+impl std::fmt::Debug for ActiveChild {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ActiveChild::Tauri(_) => write!(f, "ActiveChild::Tauri"),
+            ActiveChild::Tokio(_) => write!(f, "ActiveChild::Tokio"),
+        }
+    }
+}
+
+/// A unified wrapper for writing to the sidecar's stdin (dev mode only).
+enum ChildStdin {
+    Tokio(tokio::process::ChildStdin),
+}
+
+impl std::fmt::Debug for ChildStdin {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ChildStdin::Tokio(_) => write!(f, "ChildStdin::Tokio"),
+        }
+    }
+}
+
+impl ChildStdin {
+    async fn write_line(&mut self, line: &str) -> Result<(), String> {
+        let payload = format!("{line}\n");
+        match self {
+            ChildStdin::Tokio(stdin) => {
+                stdin.write_all(payload.as_bytes()).await.map_err(|e| e.to_string())?;
+                stdin.flush().await.map_err(|e| e.to_string())
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SidecarManager {
     inner: Arc<ManagerInner>,
@@ -75,18 +96,15 @@ struct ManagerInner {
     last_crash_at: Mutex<Option<std::time::Instant>>,
     status: Mutex<SidecarStatus>,
     next_id: AtomicU64,
-    child: Mutex<Option<Child>>,
-    // Async mutex: this guard is held across writes and flushes.
+    child: Mutex<Option<ActiveChild>>,
     stdin: tokio::sync::Mutex<Option<ChildStdin>>,
     pending: Mutex<HashMap<u64, oneshot::Sender<Result<Value, SidecarRpcError>>>>,
     status_tx: mpsc::UnboundedSender<SidecarStatus>,
-    // Where the sidecar caches downloaded model weights (persistent).
     model_cache_dir: PathBuf,
+    app_handle: OnceLock<tauri::AppHandle>,
 }
 
 impl SidecarManager {
-    /// Creates a stopped manager. `status_tx` receives every status change;
-    /// `model_cache_dir` is exported to the sidecar as its embedding cache.
     pub fn new(status_tx: mpsc::UnboundedSender<SidecarStatus>, model_cache_dir: PathBuf) -> Self {
         Self {
             inner: Arc::new(ManagerInner {
@@ -99,16 +117,36 @@ impl SidecarManager {
                 pending: Mutex::new(HashMap::new()),
                 status_tx,
                 model_cache_dir,
+                app_handle: OnceLock::new(),
             }),
         }
     }
 
-    /// Current lifecycle status.
+    pub fn set_app_handle(&self, app: tauri::AppHandle) {
+        let _ = self.inner.app_handle.set(app);
+    }
+
     pub fn status(&self) -> SidecarStatus {
         *self.inner.status.lock().expect("sidecar status lock")
     }
 
-    /// Liveness probe: starts the sidecar if needed and asks for a version.
+    pub fn kill(&self) {
+        let mut child_guard = self.inner.child.lock().expect("child lock");
+        if let Some(child) = child_guard.take() {
+            match child {
+                ActiveChild::Tauri(child) => {
+                    let _ = child.kill();
+                }
+                ActiveChild::Tokio(mut child) => {
+                    let _ = child.kill();
+                }
+            }
+        }
+        let _ = self.inner.stdin.try_lock().map(|mut s| *s = None);
+        self.inner.pending.lock().expect("pending lock").clear();
+        self.set_status(SidecarStatus::Stopped);
+    }
+
     pub async fn health(&self) -> AppResult<String> {
         self.ensure_running().await?;
         let value = self
@@ -121,14 +159,11 @@ impl SidecarManager {
             .ok_or_else(|| AppError::Internal("sidecar health response has no version".to_string()))
     }
 
-    /// Sends one JSON-RPC request and resolves with the result.
     pub async fn call(&self, method: &str, params: Value) -> AppResult<Value> {
         self.ensure_running().await?;
         self.raw_call(method, params, CALL_TIMEOUT_SECS).await
     }
 
-    /// Sends one request over an already-running sidecar. Split from the
-    /// public entry points so startup health checks do not recurse.
     async fn raw_call(&self, method: &str, params: Value, timeout_secs: u64) -> AppResult<Value> {
         let id = self.inner.next_id.fetch_add(1, Ordering::SeqCst);
         let (tx, rx) = oneshot::channel();
@@ -142,22 +177,31 @@ impl SidecarManager {
             "method": method,
             "params": params,
         });
+        
         let write_result = {
             let mut stdin_guard = self.inner.stdin.lock().await;
-            let stdin = stdin_guard
-                .as_mut()
-                .ok_or_else(|| AppError::Internal("sidecar stdin is gone".to_string()))?;
-            let payload = serde_json::to_string(&line)
-                .map_err(|err| AppError::Internal(format!("encode sidecar request: {err}")))?;
-            stdin
-                .write_all(format!("{payload}\n").as_bytes())
-                .await
-                .map_err(|err| AppError::Internal(format!("write to sidecar: {err}")))?;
-            stdin
-                .flush()
-                .await
-                .map_err(|err| AppError::Internal(format!("flush sidecar: {err}")))
+            if let Some(stdin) = stdin_guard.as_mut() {
+                let payload = serde_json::to_string(&line)
+                    .map_err(|err| AppError::Internal(format!("encode sidecar request: {err}")))?;
+                stdin
+                    .write_line(&payload)
+                    .await
+                    .map_err(|err| AppError::Internal(format!("write to sidecar: {err}")))
+            } else {
+                let mut child_guard = self.inner.child.lock().expect("child lock");
+                match child_guard.as_mut() {
+                    Some(ActiveChild::Tauri(child)) => {
+                        let payload = serde_json::to_string(&line)
+                            .map_err(|err| AppError::Internal(format!("encode sidecar request: {err}")))?;
+                        child
+                            .write(format!("{payload}\n").as_bytes())
+                            .map_err(|err| AppError::Internal(format!("write to sidecar: {err}")))
+                    }
+                    _ => Err(AppError::Internal("no active sidecar handle".to_string())),
+                }
+            }
         };
+
         if let Err(err) = write_result {
             self.inner.pending.lock().expect("pending lock").remove(&id);
             self.on_transport_failure().await;
@@ -180,7 +224,6 @@ impl SidecarManager {
         }
     }
 
-    /// Starts the sidecar when it is not running.
     async fn ensure_running(&self) -> AppResult<()> {
         if self.is_alive() {
             return Ok(());
@@ -188,21 +231,7 @@ impl SidecarManager {
         self.spawn().await
     }
 
-    fn is_alive(&self) -> bool {
-        let mut child_guard = self.inner.child.lock().expect("child lock");
-        match child_guard.as_mut() {
-            Some(child) => child.try_wait().map(|exit| exit.is_none()).unwrap_or(false),
-            None => false,
-        }
-    }
-
-    fn set_status(&self, status: SidecarStatus) {
-        *self.inner.status.lock().expect("sidecar status lock") = status;
-        let _ = self.inner.status_tx.send(status);
-    }
-
     async fn spawn(&self) -> AppResult<()> {
-        // Reset the crash counter outside the restart window.
         let quiet = self
             .inner
             .last_crash_at
@@ -219,68 +248,137 @@ impl SidecarManager {
             ));
         }
         self.set_status(SidecarStatus::Restarting);
+
+        // Give the OS time to reap the crashed process and free the port/stdin
+        // handle before we spawn a replacement.
+        tokio::time::sleep(std::time::Duration::from_millis(CRASH_BACKOFF_MS)).await;
+
         let plan = resolve_launch().map_err(AppError::Internal)?;
-        let mut command = match &plan {
-            LaunchPlan::Binary(path) => {
-                let mut command = Command::new(path);
-                command
-                    .stdin(std::process::Stdio::piped())
-                    .stdout(std::process::Stdio::piped())
-                    .stderr(std::process::Stdio::piped())
-                    .kill_on_drop(true);
-                command
+
+        match &plan {
+            LaunchPlan::Binary => self.spawn_tauri().await,
+            LaunchPlan::Python { interpreter, workdir } => {
+                self.spawn_tokio(interpreter, workdir).await
             }
-            LaunchPlan::Python {
-                interpreter,
-                workdir,
-            } => {
-                let mut command = Command::new(interpreter);
-                command
-                    .arg("-u")
-                    .arg("-m")
-                    .arg("endlessli_sidecar")
-                    .current_dir(workdir)
-                    .env("PYTHONPATH", workdir)
-                    .env("PYTHONUNBUFFERED", "1")
-                    .stdin(std::process::Stdio::piped())
-                    .stdout(std::process::Stdio::piped())
-                    .stderr(std::process::Stdio::piped())
-                    .kill_on_drop(true);
-                command
-            }
-        };
-        // Both launch plans cache model weights in the app data directory
-        // (fastembed otherwise defaults to the OS temp dir, which is not
-        // durable) and keep the Hugging Face symlink warning out of the log.
-        command
+        }
+    }
+
+    fn is_alive(&self) -> bool {
+        let mut child_guard = self.inner.child.lock().expect("child lock");
+        match child_guard.as_mut() {
+            Some(ActiveChild::Tauri(_)) => true,
+            Some(ActiveChild::Tokio(child)) => child.try_wait().map(|exit| exit.is_none()).unwrap_or(false),
+            None => false,
+        }
+    }
+
+    fn set_status(&self, status: SidecarStatus) {
+        *self.inner.status.lock().expect("sidecar status lock") = status;
+        let _ = self.inner.status_tx.send(status);
+    }
+
+    async fn spawn_tauri(&self) -> AppResult<()> {
+        let app = self.inner.app_handle.get()
+            .ok_or_else(|| AppError::Internal("AppHandle not initialized".to_string()))?;
+
+        let mut command = app.shell().sidecar("endlessli-sidecar")
+            .map_err(|e| AppError::Internal(format!("failed to init sidecar: {e}")))?;
+        
+        command = command
             .env("ENDLESSLI_EMBED_CACHE_DIR", &self.inner.model_cache_dir)
             .env("HF_HUB_DISABLE_SYMLINKS_WARNING", "1");
-        let mut child = command
-            .spawn()
-            .map_err(|err| AppError::Internal(format!("spawn sidecar ({plan:?}): {err}")))?;
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| AppError::Internal("sidecar stdout was not piped".to_string()))?;
-        let stderr = child
-            .stderr
-            .take()
-            .ok_or_else(|| AppError::Internal("sidecar stderr was not piped".to_string()))?;
-        let stdin = child
-            .stdin
-            .take()
-            .ok_or_else(|| AppError::Internal("sidecar stdin was not piped".to_string()))?;
-        *self.inner.child.lock().expect("child lock") = Some(child);
-        *self.inner.stdin.lock().await = Some(stdin);
+
+        let (mut rx, child) = command.spawn()
+            .map_err(|err| AppError::Internal(format!("spawn bundled sidecar: {err}")))?;
+
+        *self.inner.child.lock().expect("child lock") = Some(ActiveChild::Tauri(child));
+        *self.inner.stdin.lock().await = None;
+
         self.set_status(SidecarStatus::Running);
-        self.pump_stdout(stdout);
-        self.pump_stderr(stderr);
-        // Fail fast when the interpreter is broken instead of timing out later.
-        // Uses the raw call: the full health probe would recurse into startup.
-        match self
-            .raw_call("health.check", Value::Null, HEALTH_TIMEOUT_SECS)
-            .await
-        {
+
+        let pending_owner = Arc::clone(&self.inner);
+        tokio::spawn(async move {
+            let mut buffer = Vec::new();
+            while let Some(event) = rx.recv().await {
+                match event {
+                    CommandEvent::Stdout(bytes) => {
+                        buffer.extend_from_slice(&bytes);
+                        
+                        // Process all complete lines in the buffer
+                        while let Some(newline_pos) = buffer.iter().position(|&b| b == b'\n') {
+                            let line_bytes: Vec<u8> = buffer.drain(..=newline_pos).collect();
+                            let line = String::from_utf8_lossy(&line_bytes);
+                            handle_stdout_line(&pending_owner, &line);
+                        }
+                    }
+                    CommandEvent::Stderr(line_bytes) => {
+                        let line = String::from_utf8_lossy(&line_bytes);
+                        if !line.trim().is_empty() {
+                            tracing::warn!(target: "sidecar", "{}", line.trim());
+                        }
+                    }
+                    CommandEvent::Terminated(payload) => {
+                        tracing::warn!("sidecar terminated: {:?}", payload.code);
+                        *pending_owner.child.lock().expect("child lock") = None;
+                    }
+                    _ => {}
+                }
+            }
+        });
+
+        self.check_health().await
+    }
+
+    async fn spawn_tokio(&self, interpreter: &Path, workdir: &Path) -> AppResult<()> {
+        let mut command = Command::new(interpreter);
+        command
+            .arg("-u")
+            .arg("-m")
+            .arg("endlessli_sidecar")
+            .current_dir(workdir)
+            .env("PYTHONPATH", workdir)
+            .env("PYTHONUNBUFFERED", "1")
+            .env("ENDLESSLI_EMBED_CACHE_DIR", &self.inner.model_cache_dir)
+            .env("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .kill_on_drop(true);
+
+        let mut child = command.spawn()
+            .map_err(|err| AppError::Internal(format!("spawn dev sidecar: {err}")))?;
+        let stdout = child.stdout.take().ok_or_else(|| AppError::Internal("no stdout".to_string()))?;
+        let stderr = child.stderr.take().ok_or_else(|| AppError::Internal("no stderr".to_string()))?;
+        let stdin = child.stdin.take().ok_or_else(|| AppError::Internal("no stdin".to_string()))?;
+
+        *self.inner.child.lock().expect("child lock") = Some(ActiveChild::Tokio(child));
+        *self.inner.stdin.lock().await = Some(ChildStdin::Tokio(stdin));
+
+        self.set_status(SidecarStatus::Running);
+
+        // --- Use BufReader for Tokio, not `rx` ---
+        let pending_owner = Arc::clone(&self.inner);
+        tokio::spawn(async move {
+            let mut lines = BufReader::new(stdout).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                handle_stdout_line(&pending_owner, &line);
+            }
+        });
+
+        tokio::spawn(async move {
+            let mut lines = BufReader::new(stderr).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                if !line.trim().is_empty() {
+                    tracing::warn!(target: "sidecar", "{}", line);
+                }
+            }
+        });
+
+        self.check_health().await
+    }
+
+    async fn check_health(&self) -> AppResult<()> {
+        match self.raw_call("health.check", Value::Null, HEALTH_TIMEOUT_SECS).await {
             Ok(_) => Ok(()),
             Err(err) => {
                 self.on_transport_failure().await;
@@ -289,8 +387,6 @@ impl SidecarManager {
         }
     }
 
-    /// Handles a dead pipe or vanished child: records the crash so the next
-    /// call restarts (or disables after too many crashes).
     async fn on_transport_failure(&self) {
         *self.inner.child.lock().expect("child lock") = None;
         *self.inner.stdin.lock().await = None;
@@ -304,8 +400,6 @@ impl SidecarManager {
         }
     }
 
-    /// Records a crash without transport context (kept for the restart-cap
-    /// unit test and manual failure injection).
     pub fn record_crash(&self) -> SidecarStatus {
         let restarts = self.inner.restarts.fetch_add(1, Ordering::SeqCst) + 1;
         let next = if restarts >= MAX_RESTARTS {
@@ -316,68 +410,45 @@ impl SidecarManager {
         self.set_status(next);
         next
     }
+}
 
-    fn pump_stdout(&self, stdout: tokio::process::ChildStdout) {
-        let pending_owner = Arc::clone(&self.inner);
-        tokio::spawn(async move {
-            let mut lines = BufReader::new(stdout).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                if line.trim().is_empty() {
-                    continue;
-                }
-                let response: Value = match serde_json::from_str(&line) {
-                    Ok(value) => value,
-                    Err(err) => {
-                        tracing::warn!("sidecar sent invalid JSON: {err}");
-                        continue;
-                    }
-                };
-                let id = response.get("id").and_then(Value::as_u64);
-                let sender = id.and_then(|id| {
-                    pending_owner
-                        .pending
-                        .lock()
-                        .expect("pending lock")
-                        .remove(&id)
-                });
-                if let Some(sender) = sender {
-                    if let Some(error) = response.get("error") {
-                        let _ = sender.send(Err(SidecarRpcError {
-                            code: error
-                                .get("code")
-                                .and_then(|code| code.as_i64())
-                                .unwrap_or(-1),
-                            message: error
-                                .get("message")
-                                .and_then(|message| message.as_str())
-                                .unwrap_or("unknown sidecar error")
-                                .to_string(),
-                        }));
-                    } else {
-                        let _ =
-                            sender.send(Ok(response.get("result").cloned().unwrap_or(Value::Null)));
-                    }
-                }
-            }
-            tracing::warn!("sidecar stdout closed");
-        });
+fn handle_stdout_line(pending_owner: &Arc<ManagerInner>, line: &str) {
+    if line.trim().is_empty() {
+        return;
     }
-
-    fn pump_stderr(&self, stderr: tokio::process::ChildStderr) {
-        tokio::spawn(async move {
-            let mut lines = BufReader::new(stderr).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                if !line.trim().is_empty() {
-                    tracing::warn!(target: "sidecar", "{line}");
-                }
-            }
-        });
+    let response: Value = match serde_json::from_str(line) {
+        Ok(value) => value,
+        Err(err) => {
+            tracing::warn!("sidecar sent invalid JSON: {err}");
+            return;
+        }
+    };
+    let id = response.get("id").and_then(Value::as_u64);
+    let sender = id.and_then(|id| {
+        pending_owner
+            .pending
+            .lock()
+            .expect("pending lock")
+            .remove(&id)
+    });
+    if let Some(sender) = sender {
+        if let Some(error) = response.get("error") {
+            let _ = sender.send(Err(SidecarRpcError {
+                code: error.get("code").and_then(|code| code.as_i64()).unwrap_or(-1),
+                message: error
+                    .get("message")
+                    .and_then(|message| message.as_str())
+                    .unwrap_or("unknown sidecar error")
+                    .to_string(),
+            }));
+        } else {
+            let _ = sender.send(Ok(response.get("result").cloned().unwrap_or(Value::Null)));
+        }
     }
 }
 
-/// Resolves how to launch the sidecar: an explicit directory, the bundled
-/// release binary next to the executable, or the dev venv.
 fn resolve_launch() -> Result<LaunchPlan, String> {
+    #[cfg(debug_assertions)]
     if let Ok(dir) = std::env::var("ENDLESSLI_SIDECAR_DIR") {
         return resolve_dev_dir(Path::new(&dir));
     }
@@ -386,7 +457,7 @@ fn resolve_launch() -> Result<LaunchPlan, String> {
             for name in ["endlessli-sidecar.exe", "endlessli-sidecar"] {
                 let candidate = dir.join(name);
                 if candidate.is_file() {
-                    return Ok(LaunchPlan::Binary(candidate));
+                    return Ok(LaunchPlan::Binary);
                 }
             }
         }
@@ -398,11 +469,7 @@ fn resolve_launch() -> Result<LaunchPlan, String> {
             }
         }
     }
-    Err(
-        "sidecar not found: set ENDLESSLI_SIDECAR_DIR, or create the dev venv with \
-         `uv venv --python 3.11 sidecar/.venv && uv pip install -r sidecar/requirements.txt`"
-            .to_string(),
-    )
+    Err("sidecar not found".to_string())
 }
 
 fn resolve_dev_dir(dir: &Path) -> Result<LaunchPlan, String> {
@@ -412,8 +479,6 @@ fn resolve_dev_dir(dir: &Path) -> Result<LaunchPlan, String> {
             workdir: dir.to_path_buf(),
         });
     }
-    // No venv interpreter: fall back to PATH and let the spawn error (which
-    // names the missing venv) guide the user if it is unusable.
     #[cfg(windows)]
     let fallback = "python";
     #[cfg(not(windows))]
@@ -424,7 +489,6 @@ fn resolve_dev_dir(dir: &Path) -> Result<LaunchPlan, String> {
     })
 }
 
-/// Path to the dev venv interpreter for a sidecar directory, when it exists.
 fn dev_interpreter(dir: &Path) -> Option<PathBuf> {
     #[cfg(windows)]
     let interpreter = dir.join(".venv").join("Scripts").join("python.exe");
@@ -433,10 +497,6 @@ fn dev_interpreter(dir: &Path) -> Option<PathBuf> {
     interpreter.is_file().then_some(interpreter)
 }
 
-/// Resolves a Python interpreter able to run user scripts: the dev venv when
-/// present, otherwise `python`/`python3` on PATH. Scripts share the sidecar's
-/// interpreter (it is the one guarantee of a working CPython on this machine).
-/// The caller should probe the result with [`probe_interpreter`] before use.
 pub fn script_interpreter() -> PathBuf {
     if let Ok(dir) = std::env::var("ENDLESSLI_SIDECAR_DIR") {
         if let Some(interpreter) = dev_interpreter(Path::new(&dir)) {
@@ -460,7 +520,6 @@ pub fn script_interpreter() -> PathBuf {
     }
 }
 
-/// Probes an interpreter with a trivial import, bounded by a short timeout.
 pub async fn probe_interpreter(path: &Path) -> bool {
     let mut command = Command::new(path);
     command
@@ -491,8 +550,9 @@ mod tests {
         let (tx, _rx) = mpsc::unbounded_channel();
         let manager = SidecarManager::new(tx, PathBuf::from("."));
         assert_eq!(manager.status(), SidecarStatus::Stopped);
-        assert_eq!(manager.record_crash(), SidecarStatus::Restarting);
-        assert_eq!(manager.record_crash(), SidecarStatus::Restarting);
+        for _ in 0..MAX_RESTARTS {
+            assert_eq!(manager.record_crash(), SidecarStatus::Restarting);
+        }
         assert_eq!(manager.record_crash(), SidecarStatus::Disabled);
     }
 }

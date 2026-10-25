@@ -32,6 +32,8 @@ interface WorkspaceState {
   markSavedNote: (key: string, note: SavedNoteInfo) => void;
   clearSkillOutput: (name: string) => void;
   clearScriptOutput: (name: string) => void;
+  clearSkillValues: (name: string) => void;
+  clearScriptValues: (name: string) => void;
 }
 
 /**
@@ -116,5 +118,19 @@ export const useWorkspace = create<WorkspaceState>((set) => ({
       const savedNotes = { ...state.savedNotes };
       delete savedNotes[`script:${name}`];
       return { scriptOutcomes, savedNotes };
+    }),
+
+  clearSkillValues: (name) =>
+    set((state) => {
+      const skillValues = { ...state.skillValues };
+      delete skillValues[name];
+      return { skillValues };
+    }),
+
+  clearScriptValues: (name) =>
+    set((state) => {
+      const scriptValues = { ...state.scriptValues };
+      delete scriptValues[name];
+      return { scriptValues };
     }),
 }));

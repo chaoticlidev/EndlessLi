@@ -6,10 +6,11 @@
 //! plain data; transport, caching, and key handling live in the shell.
 
 use el_core::AppResult;
+use serde::Serialize;
 use std::future::Future;
 
 /// One normalized search hit.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct SearchHit {
     pub title: String,
     pub url: String,
@@ -17,7 +18,7 @@ pub struct SearchHit {
 }
 
 /// One clipped page with provenance for citation.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ClipDoc {
     pub url: String,
     pub title: String,
@@ -39,6 +40,17 @@ pub trait ResearchTools: Send + Sync {
         providers: &'a [String],
         searxng_url: Option<&'a str>,
         brave_key: Option<&'a str>,
+        tavily_key: Option<&'a str>,
+        exa_key: Option<&'a str>,
+        keenable_key: Option<&'a str>,
+        firecrawl_key: Option<&'a str>,
+        bing_key: Option<&'a str>,
+        parallel_key: Option<&'a str>,
+        anysearch_key: Option<&'a str>,
+        perplexity_key: Option<&'a str>,
+        serpbase_key: Option<&'a str>,
+        you_key: Option<&'a str>,
+        safe_search: &'a str,
     ) -> impl Future<Output = AppResult<(Vec<SearchHit>, String)>> + Send + 'a;
 
     /// Clips readable text from one HTTPS page.

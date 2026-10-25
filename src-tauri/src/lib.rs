@@ -35,6 +35,7 @@ pub fn specta_builder() -> Builder<tauri::Wry> {
             projects::project_create,
             projects::project_update,
             projects::project_archive,
+            projects::project_encryption_set,
             projects::project_delete,
             folders::folder_tree,
             folders::folder_create,
@@ -81,6 +82,7 @@ pub fn specta_builder() -> Builder<tauri::Wry> {
             memory_commands::memory_list_forgotten,
             memory_commands::memory_create,
             memory_commands::memory_update,
+            memory_commands::memory_set_scope,
             memory_commands::memory_forget,
             memory_commands::memory_restore,
             memory_commands::memory_delete,
@@ -106,8 +108,10 @@ pub fn specta_builder() -> Builder<tauri::Wry> {
             cache::cache_clear,
             research::research_start,
             research::research_cancel,
+            research::research_delete,
             research::research_get,
             research::research_history,
+            research::research_rename,
             research::research_save_results,
             research::sidecar_status,
             compression_commands::compression_start,
@@ -126,6 +130,7 @@ pub fn specta_builder() -> Builder<tauri::Wry> {
             skills::script_delete,
             skills::script_run,
             skills::script_runtime,
+            skills::script_save_output,
         ])
         .events(collect_events![
             research::ResearchStepEvent,
@@ -149,17 +154,36 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_shell::init())
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { .. } = event {
+                let state = window.state::<state::AppState>();
+                state.kill_sidecar();
+            }
+        })
         .invoke_handler(builder.invoke_handler())
         .setup(move |app| {
             builder.mount_events(app);
+            // Fail closed: never create the database in the process working
+            // directory (which might be read-only, or somewhere unexpected).
             let data_dir = app
                 .path()
                 .app_data_dir()
-                .unwrap_or_else(|_| std::path::PathBuf::from("."));
+                .map_err(|err| std::io::Error::other(format!("resolve app data dir: {err}")))?;
             let log_db_path = logging::init_logging(&data_dir)
                 .unwrap_or_else(|_| data_dir.join(logging::LOG_DB_FILENAME));
-            let db = el_db::Database::open(&data_dir.join("endlessli.db"))
-                .map_err(|err| format!("open database: {err}"))?;
+            // Optional full-database encryption. The passphrase is
+            // read only by a `sqlcipher` build; a normal build ignores it.
+            #[cfg(feature = "sqlcipher")]
+            let db_key = database_key();
+            #[cfg(not(feature = "sqlcipher"))]
+            let db_key: Option<String> = None;
+            if db_key.is_some() {
+                tracing::info!("opening database with SQLCipher");
+            }
+            let db =
+                el_db::Database::open_with_key(&data_dir.join("endlessli.db"), db_key.as_deref())
+                    .map_err(|err| format!("open database: {err}"))?;
             // Seed the shipped skills/scripts the first time each table is
             // empty; failures are logged, never fatal.
             match db.connect() {
@@ -173,6 +197,9 @@ pub fn run() {
 
             let (sidecar_tx, mut sidecar_rx) = tokio::sync::mpsc::unbounded_channel();
             let sidecar = sidecar::SidecarManager::new(sidecar_tx, data_dir.join("models"));
+            
+            sidecar.set_app_handle(app.handle().clone());
+            
             let (research_tx, mut research_rx) =
                 tokio::sync::mpsc::unbounded_channel::<el_research::ResearchEvent>();
 
@@ -190,6 +217,11 @@ pub fn run() {
                 data_dir,
                 log_db_path,
             };
+
+            if let Err(err) = secrets::migrate_legacy_fallbacks(&app_state) {
+                tracing::warn!("legacy API key cleanup failed: {err}");
+            }
+
             app.manage(app_state.clone());
 
             let app_handle = app.handle().clone();
@@ -216,6 +248,21 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// Resolves the optional SQLCipher passphrase for a `sqlcipher` build.
+///
+/// Dev/testing can set `ENDLESSLI_DB_KEY`; release builds read the keychain
+/// entry provisioned at install/onboarding time. A missing key means the
+/// database is opened unencrypted.
+#[cfg(feature = "sqlcipher")]
+fn database_key() -> Option<String> {
+    if let Ok(key) = std::env::var("ENDLESSLI_DB_KEY") {
+        if !key.trim().is_empty() {
+            return Some(key);
+        }
+    }
+    el_security::secrets::load_database_key().ok()
 }
 
 /// Maps orchestration progress onto the typed research events.

@@ -1,6 +1,6 @@
 [project]
 name = "endlessli-sidecar"
-version = "0.6.0"
+version = "1.0.0"
 description = "EndlessLi Python sidecar: search, clipping, and ML tools"
 requires-python = ">=3.11"
 dependencies = [

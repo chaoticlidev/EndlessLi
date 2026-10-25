@@ -5,9 +5,11 @@ import {
   ChevronRight,
   FolderPlus,
   Inbox,
+  Lock,
   Pencil,
   Plus,
   Trash2,
+  Unlock,
 } from "lucide-react";
 import { useUi } from "../../stores/ui";
 import {
@@ -20,6 +22,7 @@ import {
   useFolderTree,
   useProjects,
   useRenameFolder,
+  useSetProjectEncryption,
 } from "../../ipc/queries";
 import type { FolderNode } from "../../ipc/bindings";
 import { TagManager } from "./TagManager";
@@ -197,7 +200,15 @@ function FolderRow({
   );
 }
 
-function ProjectRow({ id, name }: { id: string; name: string }) {
+function ProjectRow({
+  id,
+  name,
+  encrypted,
+}: {
+  id: string;
+  name: string;
+  encrypted: boolean;
+}) {
   const selectedProjectId = useUi((state) => state.selectedProjectId);
   const selectProject = useUi((state) => state.selectProject);
   const selectFolder = useUi((state) => state.selectFolder);
@@ -209,6 +220,7 @@ function ProjectRow({ id, name }: { id: string; name: string }) {
   const createFolder = useCreateFolder();
   const archiveProject = useArchiveProject();
   const deleteProject = useDeleteProject();
+  const setEncryption = useSetProjectEncryption();
 
   const active = selectedProjectId === id;
 
@@ -247,7 +259,40 @@ function ProjectRow({ id, name }: { id: string; name: string }) {
         >
           {name}
         </button>
+        {encrypted && (
+          <span title="Notes encrypted" className="shrink-0 text-neutral-500">
+            <Lock size={11} aria-hidden="true" />
+          </span>
+        )}
         <span className="hidden items-center gap-0.5 group-hover:flex">
+          <button
+            type="button"
+            title={encrypted ? "Disable note encryption" : "Encrypt this project's notes"}
+            onClick={() => {
+              if (encrypted) {
+                if (
+                  !window.confirm(
+                    `Decrypt every note in "${name}"? Their content will be stored unencrypted on this device.`,
+                  )
+                ) {
+                  return;
+                }
+              } else if (
+                !window.confirm(
+                  `Encrypt every note in "${name}"? The key is stored in your OS keychain. Encrypted notes cannot be searched or auto-linked.`,
+                )
+              ) {
+                return;
+              }
+              setEncryption.mutate(
+                { id, enabled: !encrypted },
+                { onError: (err) => setError(errorMessage(err)) },
+              );
+            }}
+            className="rounded p-1 text-neutral-500 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+          >
+            {encrypted ? <Lock size={13} /> : <Unlock size={13} />}
+          </button>
           <button
             type="button"
             title="New folder"
@@ -416,7 +461,12 @@ export function ProjectsPanel() {
 
       <div className="flex flex-col gap-0.5 overflow-y-auto">
         {activeProjects.map((project) => (
-          <ProjectRow key={project.id} id={project.id} name={project.name} />
+          <ProjectRow
+            key={project.id}
+            id={project.id}
+            name={project.name}
+            encrypted={project.encrypted}
+          />
         ))}
       </div>
 

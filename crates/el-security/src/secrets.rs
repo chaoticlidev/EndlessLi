@@ -10,7 +10,23 @@ use el_core::{AppError, AppResult};
 pub const KEYRING_SERVICE: &str = "endlessli";
 
 /// Provider ids accepted by the key commands.
-pub const KNOWN_PROVIDERS: &[&str] = &["openai", "anthropic", "deepseek", "brave"];
+pub const KNOWN_PROVIDERS: &[&str] = &[
+    "openai",
+    "anthropic",
+    "deepseek",
+    "brave",
+    "searxng",
+    "tavily",
+    "exa",
+    "keenable",
+    "firecrawl",
+    "bing",
+    "parallel",
+    "anysearch",
+    "perplexity",
+    "serpbase",
+    "you",
+];
 
 /// Rejects unknown provider ids before touching the keychain.
 pub fn check_provider(provider: &str) -> AppResult<()> {
@@ -25,8 +41,90 @@ pub fn check_provider(provider: &str) -> AppResult<()> {
 }
 
 fn entry(provider: &str) -> AppResult<keyring::Entry> {
-    keyring::Entry::new(KEYRING_SERVICE, provider)
+    entry_for(provider)
+}
+
+fn entry_for(account: &str) -> AppResult<keyring::Entry> {
+    keyring::Entry::new(KEYRING_SERVICE, account)
         .map_err(|err| AppError::Internal(format!("open keychain entry: {err}")))
+}
+
+/// Account name for a project's note-encryption key. Project ids are UUIDs,
+/// so the account stays well under platform keychain limits.
+fn project_account(project_id: &str) -> String {
+    format!("project-key.{project_id}")
+}
+
+/// Stores a project's 32-byte note-encryption key (base64-encoded) in the OS
+/// keychain. The key never touches SQLite.
+pub fn set_project_key(project_id: &str, encoded_key: &str) -> AppResult<()> {
+    if project_id.trim().is_empty() {
+        return Err(AppError::InvalidInput(
+            "project id must not be blank".to_string(),
+        ));
+    }
+    entry_for(&project_account(project_id))?
+        .set_password(encoded_key)
+        .map_err(|err| AppError::Internal(format!("store project encryption key: {err}")))?;
+    Ok(())
+}
+
+/// Loads a project's note-encryption key, or a clear error when it is absent.
+pub fn load_project_key(project_id: &str) -> AppResult<String> {
+    entry_for(&project_account(project_id))?
+        .get_password()
+        .map_err(|err| match err {
+            keyring::Error::NoEntry => {
+                AppError::InvalidInput(format!("no encryption key stored for project {project_id}"))
+            }
+            other => AppError::Internal(format!("read project encryption key: {other}")),
+        })
+}
+
+/// Removes a project's note-encryption key. Succeeds when none was stored.
+pub fn delete_project_key(project_id: &str) -> AppResult<()> {
+    match entry_for(&project_account(project_id))?.delete_credential() {
+        Ok(()) => Ok(()),
+        Err(keyring::Error::NoEntry) => Ok(()),
+        Err(err) => Err(AppError::Internal(format!(
+            "delete project encryption key: {err}"
+        ))),
+    }
+}
+
+/// Keychain account holding the optional SQLCipher passphrase.
+const DATABASE_KEY_ACCOUNT: &str = "database-key";
+
+/// Stores the SQLCipher passphrase. Only meaningful in a `sqlcipher` build.
+pub fn set_database_key(passphrase: &str) -> AppResult<()> {
+    if passphrase.trim().is_empty() {
+        return Err(AppError::InvalidInput(
+            "database passphrase must not be blank".to_string(),
+        ));
+    }
+    entry_for(DATABASE_KEY_ACCOUNT)?
+        .set_password(passphrase)
+        .map_err(|err| AppError::Internal(format!("store database key: {err}")))?;
+    Ok(())
+}
+
+/// Loads the SQLCipher passphrase, if one was provisioned.
+pub fn load_database_key() -> AppResult<String> {
+    entry_for(DATABASE_KEY_ACCOUNT)?
+        .get_password()
+        .map_err(|err| match err {
+            keyring::Error::NoEntry => AppError::InvalidInput("no database key stored".to_string()),
+            other => AppError::Internal(format!("read database key: {other}")),
+        })
+}
+
+/// Removes the SQLCipher passphrase from the keychain.
+pub fn delete_database_key() -> AppResult<()> {
+    match entry_for(DATABASE_KEY_ACCOUNT)?.delete_credential() {
+        Ok(()) => Ok(()),
+        Err(keyring::Error::NoEntry) => Ok(()),
+        Err(err) => Err(AppError::Internal(format!("delete database key: {err}"))),
+    }
 }
 
 /// Stores (or replaces) a provider API key. Blank keys are rejected so an

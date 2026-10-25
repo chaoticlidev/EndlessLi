@@ -78,10 +78,14 @@ pub async fn run_script(
     allow_network: bool,
     timeout: Duration,
 ) -> AppResult<ScriptOutcome> {
-    let dir = std::env::temp_dir()
-        .join("endlessli-scripts")
-        .join(uuid::Uuid::now_v7().to_string());
-    tokio::fs::create_dir_all(&dir)
+    // Random (v4) name + exclusive create: a predictable UUIDv7 path let a
+    // same-user process race the writes and swap `main.py`.
+    let parent = std::env::temp_dir().join("endlessli-scripts");
+    let dir = parent.join(uuid::Uuid::new_v4().to_string());
+    tokio::fs::create_dir_all(&parent)
+        .await
+        .map_err(|err| spawn_error("create script temp dir", &err))?;
+    tokio::fs::create_dir(&dir)
         .await
         .map_err(|err| spawn_error("create script temp dir", &err))?;
     let script_path = dir.join("main.py");

@@ -129,6 +129,45 @@ pub fn skill_save_output(
     Ok(note)
 }
 
+/// Saves a script's output as an AI-authored note.
+#[tauri::command]
+#[specta::specta]
+pub fn script_save_output(
+    state: State<'_, AppState>,
+    name: String,
+    output: String,
+    title: Option<String>,
+    project_id: Option<String>,
+    folder_id: Option<String>,
+) -> AppResult<Note> {
+    let output = output.trim().to_string();
+    if output.is_empty() {
+        return Err(AppError::InvalidInput(
+            "the script produced no output to save".to_string(),
+        ));
+    }
+    let title = title
+        .map(|title| title.trim().to_string())
+        .filter(|title| !title.is_empty())
+        .unwrap_or_else(|| name.clone());
+    let conn = state.db.connect()?;
+    let note = el_db::repo::notes::create(
+        &conn,
+        &NewNote {
+            title,
+            content: output,
+            project_id,
+            folder_id,
+            author: "ai".to_string(),
+            source_session_id: None,
+            created_from_note_id: None,
+        },
+    )?;
+    drop(conn);
+    state.embed.enqueue(note.id.clone());
+    Ok(note)
+}
+
 /// Lists scripts alphabetically.
 #[tauri::command]
 #[specta::specta]

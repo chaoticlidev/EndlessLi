@@ -18,6 +18,8 @@ embed-resource = "3"
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
+tauri-plugin-shell = "2"
+reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 specta = { workspace = true }
@@ -47,6 +49,8 @@ el-skills = { workspace = true }
 default = ["analytics"]
 # DuckDB analytical engine, enabled at Phase 6 per ADR-002.
 analytics = ["el-analytics/duckdb"]
+# Optional full-database encryption (Phase 11.3). Not enabled by default.
+sqlcipher = ["el-db/sqlcipher"]
 
 [lints]
 workspace = true

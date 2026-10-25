@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import ipaddress
 import re
+import socket
 from dataclasses import dataclass
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -24,6 +26,40 @@ MAX_CHARS_LIMIT = 50_000
 #: Tags that never carry readable content.
 _BOILERPLATE_TAGS = {"script", "style", "nav", "header", "footer", "noscript", "form", "aside"}
 
+#: Redirects followed before the clip fails.
+_MAX_REDIRECTS = 5
+
+#: Hostnames/suffixes that always name the local machine or a private zone.
+_BLOCKED_HOSTS = {"localhost", "localhost.localdomain", "ip6-localhost", "ip6-loopback"}
+_BLOCKED_HOST_SUFFIXES = (".local", ".internal", ".localhost", ".home.arpa")
+
+
+def _is_public_address(address: str) -> bool:
+    """True only for a globally routable unicast address.
+
+    This rejects loopback, link-local (169.254/16, fe80::/10), RFC1918,
+    shared/CGNAT, multicast, reserved, and unspecified ranges so a search
+    result cannot point the clipper at a device on the user's network.
+    """
+    try:
+        ip = ipaddress.ip_address(address)
+    except ValueError:
+        return False
+    return ip.is_global and not (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_multicast
+        or ip.is_reserved
+        or ip.is_unspecified
+    )
+
+
+def _resolve_addresses(host: str, port: int) -> list[str]:
+    """Resolves ``host`` to its addresses. Separated so tests never touch DNS."""
+    infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    return sorted({info[4][0] for info in infos})
+
 
 @dataclass
 class ClipResult:
@@ -36,11 +72,31 @@ class ClipResult:
 
 
 def _check_url(url: str) -> str:
-    """Validates the URL. Only HTTPS is fetched, and only http schemes parse."""
-    parsed = urlparse(url.strip())
+    """Validates a URL and refuses any target on a private/non-public network.
+
+    HTTPS-only keeps most intranet targets out (self-signed certs fail), and
+    the host/IP check blocks loopback, RFC1918, link-local, and private DNS
+    zones. Callers re-run this on every redirect hop.
+    """
+    cleaned = url.strip()
+    parsed = urlparse(cleaned)
     if parsed.scheme != "https" or not parsed.netloc:
         raise ValueError(f"refusing to fetch non-HTTPS URL: {url!r}")
-    return url.strip()
+    host = (parsed.hostname or "").rstrip(".").lower()
+    if not host:
+        raise ValueError(f"refusing to fetch URL without a host: {url!r}")
+    if host in _BLOCKED_HOSTS or any(host.endswith(suffix) for suffix in _BLOCKED_HOST_SUFFIXES):
+        raise ValueError(f"refusing to fetch non-public host: {host!r}")
+    try:
+        literal = ipaddress.ip_address(host)
+    except ValueError:
+        addresses = _resolve_addresses(host, parsed.port or 443)
+        if not addresses or not all(_is_public_address(address) for address in addresses):
+            raise ValueError(f"refusing to fetch non-public host: {host!r}") from None
+    else:
+        if not _is_public_address(str(literal)):
+            raise ValueError(f"refusing to fetch non-public address: {host!r}")
+    return cleaned
 
 
 def _extract_title(soup: BeautifulSoup) -> str:
@@ -83,15 +139,31 @@ def clip_url(url: str, max_chars: int = DEFAULT_MAX_CHARS, timeout_secs: float =
     cleaned_url = _check_url(url)
     chars = min(max(1, max_chars), MAX_CHARS_LIMIT)
 
-    def fetch() -> requests.Response:
-        session = requests.Session()
-        try:
+    def follow_redirects(session: requests.Session, start: str) -> requests.Response:
+        """Fetches ``start`` one hop at a time so every redirect target is
+        re-validated (a public URL must not bounce to a private one)."""
+        current = start
+        for _ in range(_MAX_REDIRECTS + 1):
             response = session.get(
-                cleaned_url,
+                current,
                 headers={"User-Agent": USER_AGENT, "Accept": "text/html"},
                 timeout=timeout_secs,
                 stream=True,
+                allow_redirects=False,
             )
+            if response.status_code not in (301, 302, 303, 307, 308):
+                return response
+            location = response.headers.get("Location")
+            response.close()
+            if not location:
+                raise ValueError("redirect without a Location header")
+            current = _check_url(urljoin(current, location))
+        raise ValueError(f"too many redirects (limit {_MAX_REDIRECTS})")
+
+    def fetch() -> requests.Response:
+        session = requests.Session()
+        try:
+            response = follow_redirects(session, cleaned_url)
             try:
                 response.raise_for_status()
                 content_type = response.headers.get("Content-Type", "")

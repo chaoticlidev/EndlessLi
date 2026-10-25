@@ -10,6 +10,8 @@ el-core = { workspace = true }
 serde = { workspace = true }
 keyring = { workspace = true }
 ammonia = { workspace = true }
+aes-gcm = { workspace = true }
+base64 = { workspace = true }
 
 [lints]
 workspace = true

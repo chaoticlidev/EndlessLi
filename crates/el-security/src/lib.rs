@@ -4,6 +4,7 @@
 //! LLM output is stripped of active HTML/scripts; note and database
 //! encryption land here in the release hardening phase.
 
+pub mod crypto;
 pub mod sanitize;
 pub mod secrets;
 

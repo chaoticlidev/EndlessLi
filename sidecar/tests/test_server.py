@@ -16,8 +16,31 @@ def test_health_check():
 
 def test_search_providers_lists_backends():
     response = dispatch({"jsonrpc": "2.0", "id": 2, "method": "search.providers", "params": {}})
-    names = {entry["name"]: entry["requires_key"] for entry in response["result"]["providers"]}
-    assert names == {"ddgs": False, "searxng": False, "brave": True}
+    names = {entry["name"] for entry in response["result"]["providers"]}
+    assert names == {
+        "ddgs", "ddg_lite", "ddg_html", "searxng",
+        "firecrawl", "keenable", "exa", "tavily",
+        "serpbase", "bing", "parallel", "anysearch",
+        "perplexity", "you",
+    }
+    # ddgs, ddg_lite, ddg_html, searxng are keyless
+    keyless = {
+        entry["name"]
+        for entry in response["result"]["providers"]
+        if not entry["requires_key"]
+    }
+    assert keyless == {"ddgs", "ddg_lite", "ddg_html", "searxng"}
+    # all paid APIs require a key
+    keyed = {
+        entry["name"]
+        for entry in response["result"]["providers"]
+        if entry["requires_key"]
+    }
+    assert keyed == {
+        "firecrawl", "keenable", "exa", "tavily",
+        "serpbase", "bing", "parallel", "anysearch",
+        "perplexity", "you",
+    }
 
 
 def test_unknown_method():

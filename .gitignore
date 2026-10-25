@@ -10,6 +10,7 @@ lerna-debug.log*
 # Dependencies
 node_modules
 dist
+dist/
 dist-ssr
 *.local
 
@@ -18,21 +19,33 @@ src-tauri/target
 src-tauri/WixTools
 target/
 **/*.rs.bk
+src-tauri/binaries/
+src-tauri/gen/schemas
 
 # Databases (local-only data)
 *.db
 *.db-*
 *.duckdb
+*.db-wal
+*.db-shm
+*.duckdb
+*.duckdb.wal
 
 # Env (never commit real secrets)
 .env
-.env.local
+.env.*
+!.env.example
 
-# Python sidecar (Phase 5+)
+# Python sidecar
 sidecar/.venv
 sidecar/dist
+sidecar/build
 __pycache__/
 *.pyc
+
+# PyInstaller artifacts
+sidecar/*.spec
+sidecar/*.exe
 
 # Editor directories and files
 .vscode/*
@@ -44,3 +57,12 @@ __pycache__/
 *.njsproj
 *.sln
 *.sw?
+
+# Added
+
+.pnpm-store
+src-tauri/sidecar-error.txt
+src-tauri/windows-test.manifest
+src-tauri/windows-app.manifest
+src-tauri/windows-app.rc
+.vscode

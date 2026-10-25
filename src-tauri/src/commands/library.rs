@@ -623,12 +623,34 @@ fn host_of(url: &str) -> Option<String> {
 /// Deletes a managed copy, but only when it lives inside the library
 /// directory (defense in depth against a tampered `file_path`).
 fn remove_managed_file(data_dir: &Path, file_path: &str) {
-    let path = Path::new(file_path);
-    if !path.starts_with(library_dir(data_dir)) {
+    // Canonicalize both sides: a tampered row like
+    // `<library>/../../valuable.txt` would pass a component-wise prefix
+    // check, and a symlink inside the library could point elsewhere.
+    let Ok(library) = library_dir(data_dir).canonicalize() else {
+        tracing::warn!(path = file_path, "library directory is unavailable");
+        return;
+    };
+    let Ok(path) = Path::new(file_path).canonicalize() else {
+        // Already gone (or never existed): nothing to delete.
+        return;
+    };
+    if !path.starts_with(&library) {
         tracing::warn!(path = file_path, "refusing to delete non-managed path");
         return;
     }
-    if let Err(err) = std::fs::remove_file(path) {
+    match std::fs::symlink_metadata(&path) {
+        Ok(metadata) if metadata.file_type().is_file() => {}
+        Ok(_) => {
+            tracing::warn!(path = file_path, "refusing to delete a non-regular file");
+            return;
+        }
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return,
+        Err(err) => {
+            tracing::warn!(path = file_path, "managed file metadata failed: {err}");
+            return;
+        }
+    }
+    if let Err(err) = std::fs::remove_file(&path) {
         if err.kind() != std::io::ErrorKind::NotFound {
             tracing::warn!(path = file_path, "managed file delete failed: {err}");
         }

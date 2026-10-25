@@ -8,8 +8,7 @@ import {
   Save,
   Trash2,
 } from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import rehypeSanitize from "rehype-sanitize";
+import { Markdown } from "../../components/Markdown";
 import type { ParamValue, Skill } from "../../ipc/bindings";
 import {
   errorMessage,
@@ -151,6 +150,7 @@ function SkillEditor({
   const setOutcome = useWorkspace((state) => state.setSkillOutcome);
   const markSaved = useWorkspace((state) => state.markSavedNote);
   const clearOutput = useWorkspace((state) => state.clearSkillOutput);
+  const clearValues = useWorkspace((state) => state.clearSkillValues);
 
   const parameters = parsed.data?.parameters ?? [];
   const effective = (name: string, fallback: string | null) =>
@@ -344,7 +344,12 @@ function SkillEditor({
               </button>
               <button
                 type="button"
-                onClick={() => skill && clearOutput(skill.name)}
+                onClick={() => {
+                  if (skill) {
+                    clearOutput(skill.name);
+                    clearValues(skill.name);
+                  }
+                }}
                 className="flex items-center gap-1 text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"
               >
                 <Eraser size={12} />
@@ -355,9 +360,7 @@ function SkillEditor({
               <p className="text-xs text-amber-600">{outcome.budget_warning}</p>
             )}
             <div className="markdown-body max-h-80 overflow-y-auto rounded-md border border-neutral-200 p-3 dark:border-neutral-700">
-              <ReactMarkdown rehypePlugins={[rehypeSanitize]}>
-                {outcome.output}
-              </ReactMarkdown>
+              <Markdown content={outcome.output} />
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <input
