@@ -15,7 +15,6 @@ import {
   useProjects,
   useStartSynthesis,
 } from "../../ipc/queries";
-import { useUi } from "../../stores/ui";
 import { Select } from "../../components/Select";
 import type { SelectOption } from "../../components/Select";
 
@@ -270,7 +269,7 @@ export function NewSynthesisModal({
   const [mediaType, setMediaType] = useState("report");
   const [kMode, setKMode] = useState<"auto" | "manual">("auto");
   const [kValue, setKValue] = useState("8");
-  const [maxContext, setMaxContext] = useState("");
+  const [maxContext] = useState("");
   const [instructions, setInstructions] = useState("");
   const [projectId, setProjectId] = useState<string | null>(null);
   const [sourceTab, setSourceTab] = useState<SourceTab>("notes");

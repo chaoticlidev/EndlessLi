@@ -5,7 +5,6 @@ import {
   Square,
   Save,
   FileText,
-  Trash2,
   ArrowLeft,
 } from "lucide-react";
 import { Markdown } from "../../components/Markdown";
@@ -271,18 +270,22 @@ function OutputView({ jobId, content }: { jobId: string; content: string }) {
 
 function ActiveRunView({
   jobId,
-  onDelete,
   onBack,
 }: {
   jobId: string;
-  onDelete: (job: SynthesisJob) => void;
-  onBack: () => void; // <-- Add this prop type
+  onBack: () => void;
 }) {
   const { data: job } = useSynthesisJob(jobId);
   const cancelSynthesis = useCancelSynthesis();
-  const [isCanceling, setIsCanceling] = useState(false);
+  
+  // Track the status that was active when the user clicked Cancel.
+  const [canceledStatus, setCanceledStatus] = useState<string | null>(null);
   const [progress, setProgress] = useState<SynthesisProgressEvent | null>(null);
 
+  // Derive the "isCanceling" state.
+  const isCanceling = canceledStatus !== null && canceledStatus === job?.status;
+
+  // The event listener effect remains untouched
   useEffect(() => {
     let alive = true;
 
@@ -296,12 +299,6 @@ function ActiveRunView({
       alive = false;
     };
   }, [jobId]);
-
-  useEffect(() => {
-    if (job?.status === "failed" || job?.status === "cancelled" || job?.status === "completed") {
-      setIsCanceling(false);
-    }
-  }, [job?.status]);
 
   const running = job?.status === "pending" || job?.status === "in_progress";
 
@@ -335,9 +332,9 @@ function ActiveRunView({
           <button
             type="button"
             onClick={() => {
-            setIsCanceling(true);
-            cancelSynthesis.mutate(jobId);
-          }}
+              setCanceledStatus(job?.status || null);
+              cancelSynthesis.mutate(jobId);
+            }}
             className="flex items-center gap-1 rounded-md border border-red-400 px-2.5 py-1 text-sm text-red-700 dark:text-red-400"
           >
             <Square size={12} />
@@ -349,7 +346,7 @@ function ActiveRunView({
             type="button"
             disabled={isCanceling}
             onClick={() => {
-              setIsCanceling(true);
+              setCanceledStatus(job?.status || null);
               cancelSynthesis.mutate(jobId);
             }}
             className="flex items-center gap-1 rounded-md border border-red-400 px-2.5 py-1 text-sm text-red-700 disabled:opacity-50 dark:text-red-400"
@@ -445,7 +442,6 @@ export function SynthesizeView() {
         {activeJob && (
           <ActiveRunView
             jobId={activeJob.id}
-            onDelete={(job) => setPendingDelete(job)}
             onBack={() => setActiveId(null)}
           />
         )}

@@ -28,7 +28,7 @@ If there is a feature you would love to see in EndlessLi, please open an Issue a
 
 ### 3. Sharing Prompts and Skills
 
-Even though I am not accepting code PRs, EndlessLi is built to be extensible! 
+Even though I am not accepting code PRs, EndlessLi is built to be extensible!
 
 * If you write a great **Skill** (Markdown) or **Script** (Python), you don't need to contribute it to the core repo.
 * You can share it in the Discussions tab, or keep it in your own personal library.

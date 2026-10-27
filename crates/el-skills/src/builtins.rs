@@ -404,8 +404,19 @@ mod tests {
     }
 
     #[test]
-    fn builtin_scripts_are_offline_by_default() {
+    fn builtin_scripts_are_mostly_offline() {
         let scripts = builtin_scripts().expect("scripts parse");
-        assert!(scripts.iter().all(|script| !script.allow_network));
+        // Only the YouTube Transcript script is allowed to use the network.
+        let online: Vec<&str> = scripts
+            .iter()
+            .filter(|script| script.allow_network)
+            .map(|script| script.name.as_str())
+            .collect();
+        assert_eq!(
+            online,
+            vec!["YouTube Transcript"],
+            "Unexpected online scripts: {:?}",
+            online
+        );
     }
 }
