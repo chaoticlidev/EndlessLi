@@ -69,7 +69,7 @@ impl ActiveChild {
                 Ok(())
             }
             ActiveChild::Tokio(mut child) => {
-                let _ = child.start_kill(); 
+                let _ = child.start_kill();
                 Ok(())
             }
         }

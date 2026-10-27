@@ -208,7 +208,8 @@ pub fn run() {
                 let _ = el_db::repo::synthesis::fail_stale_jobs(&conn);
             }
 
-            let (sidecar_tx, mut sidecar_rx) = tokio::sync::mpsc::unbounded_channel::<sidecar::SidecarStatus>();
+            let (sidecar_tx, mut sidecar_rx) =
+                tokio::sync::mpsc::unbounded_channel::<sidecar::SidecarStatus>();
             let sidecar = sidecar::SidecarManager::new(sidecar_tx, data_dir.join("models"));
 
             sidecar.set_app_handle(app.handle().clone());

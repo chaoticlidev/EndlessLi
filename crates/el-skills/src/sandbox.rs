@@ -307,7 +307,7 @@ mod tests {
         };
         let scripts = crate::builtins::builtin_scripts().expect("builtins");
         assert_eq!(scripts.len(), 6);
-        
+
         for script in scripts {
             // Skip scripts that require network access (like YouTube Transcript)
             if script.allow_network {
@@ -319,7 +319,10 @@ mod tests {
                 &python,
                 &script.content,
                 &[
-                    value("text", "the quick brown fox jumps over the lazy dog the end"),
+                    value(
+                        "text",
+                        "the quick brown fox jumps over the lazy dog the end",
+                    ),
                     value("csv", "name,age\nAda,36\nAlan,41\n"),
                     value("csv_content", "name,age\nAda,36\nAlan,41\n"),
                     value("top", "3"),
@@ -330,7 +333,7 @@ mod tests {
             )
             .await
             .expect("run");
-            
+
             assert!(!outcome.timed_out, "{} timed out", script.name);
             assert_eq!(
                 outcome.exit_code,

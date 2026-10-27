@@ -2,7 +2,7 @@
 
 **A local-first research and knowledge management tool.**
 
-EndlessLi bridges the gap between your knowledge base and your research workflow. It combines the flexibility of a Notion-style workspace with the power of an AI research assistant. Everything is stored locally in SQLite on your machine, and you only send data to a language model when you explicitly ask it to.
+EndlessLi bridges the gap between your knowledge base and your research workflow. It pairs a fast, flexible note-taking workspace with an AI research assistant that can search the web, read documents, and synthesize findings. Everything is stored locally in SQLite on your machine, and you only send data to a language model when you explicitly ask it to.
 
 Version 1.0.0 | License: Apache 2.0 | Status: Active Development
 

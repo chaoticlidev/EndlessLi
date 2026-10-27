@@ -138,9 +138,7 @@ pub fn list_jobs(conn: &Connection, limit: usize) -> AppResult<Vec<SynthesisJob>
              FROM synthesis_jobs ORDER BY created_at DESC LIMIT ?1",
         )
         .map_err(map_db)?;
-    let rows = stmt
-        .query_map([limit as i64], row_to_job)
-        .map_err(map_db)?;
+    let rows = stmt.query_map([limit as i64], row_to_job).map_err(map_db)?;
     let mut out = Vec::new();
     for row in rows {
         out.push(row.map_err(map_db)?);

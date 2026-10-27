@@ -1,8 +1,8 @@
 //! Skills and scripts repository: the two tiers of reusable capabilities.
 
 use el_core::{AppError, AppResult, NewScript, NewSkill, Script, Skill};
-use rusqlite::{Connection, Row};
 use rusqlite::params;
+use rusqlite::{Connection, Row};
 
 use super::{bool_param, check_not_blank, get_bool, map_db, new_id, now_ts};
 

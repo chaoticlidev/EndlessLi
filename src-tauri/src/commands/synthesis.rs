@@ -88,7 +88,11 @@ pub async fn synthesis_start(
             "too many documents (max 1,000)".to_string(),
         ));
     }
-    let total_chars: usize = input.documents.iter().map(|doc| doc.text.chars().count()).sum();
+    let total_chars: usize = input
+        .documents
+        .iter()
+        .map(|doc| doc.text.chars().count())
+        .sum();
     if total_chars > 10_000_000 {
         return Err(AppError::InvalidInput(
             "documents exceed the 10,000,000-character limit".to_string(),
@@ -183,7 +187,8 @@ async fn run_synthesis(
         .iter()
         .map(|doc| {
             // Strip mojibake
-            let mut clean_text = doc.text
+            let mut clean_text = doc
+                .text
                 .replace("â€”", "-")
                 .replace("â€“", "-")
                 .replace("â€™", "'")
@@ -228,7 +233,7 @@ async fn run_synthesis(
             .unwrap_or("")
             .trim() // Trim whitespace
             .to_string();
-        
+
         // Skip empty chunks so the embedder doesn't crash
         if text.is_empty() {
             continue;
@@ -243,11 +248,13 @@ async fn run_synthesis(
                 .to_string(),
         );
     }
-    
+
     // Update chunk_count after filtering
     let chunk_count = chunk_texts.len();
     if chunk_count == 0 {
-        return Err(AppError::InvalidInput("no readable text chunks produced".to_string()));
+        return Err(AppError::InvalidInput(
+            "no readable text chunks produced".to_string(),
+        ));
     }
 
     emit_progress(
@@ -293,15 +300,15 @@ async fn run_synthesis(
                     .filter(|c| c.is_ascii() || c.is_alphabetic() || c.is_whitespace())
                     .collect::<String>();
 
-                eprintln!("DEBUG: Sending text to sidecar: {:?}", cleaned_text); 
-                
+                eprintln!("DEBUG: Sending text to sidecar: {:?}", cleaned_text);
+
                 let result = sidecar
                     .call(
                         "embed.texts",
                         serde_json::json!({"texts": [cleaned_text], "model": embedder_model}), // Use cleaned_text here
                     )
                     .await?;
-                    
+
                 eprintln!("DEBUG: Sidecar result: {:?}", result);
                 Ok(el_cache::CacheValue {
                     bytes: serde_json::to_vec(&result)
@@ -486,8 +493,10 @@ async fn run_synthesis(
             content.push_str(&format!("\n\n[{}]", doc_ref));
         }
     }
-    let mut sources: Vec<String> =
-        representatives.iter().map(|(doc_ref, _)| doc_ref.clone()).collect();
+    let mut sources: Vec<String> = representatives
+        .iter()
+        .map(|(doc_ref, _)| doc_ref.clone())
+        .collect();
     sources.sort();
     sources.dedup();
 
@@ -650,9 +659,10 @@ fn finalize_job(state: &AppState, job_id: &str, outcome: AppResult<SynthesisOutp
         }
         Err(err) if is_cancelled(&err) => {
             eprintln!("SYNTHESIS FAILED: {:?}", err);
-            let _ = state.db.connect().and_then(|conn| {
-                el_db::repo::synthesis::set_status(&conn, job_id, "cancelled")
-            });
+            let _ = state
+                .db
+                .connect()
+                .and_then(|conn| el_db::repo::synthesis::set_status(&conn, job_id, "cancelled"));
             let _ = SynthesisProgressEvent {
                 job_id: job_id.to_string(),
                 stage: "error".to_string(),
@@ -708,10 +718,7 @@ fn cosine_distance(a: &[f32], b: &[f64]) -> f64 {
 /// Returns whether a synthesis run is currently in progress.
 #[tauri::command]
 #[specta::specta]
-pub fn synthesis_status(
-    state: State<'_, AppState>,
-    job_id: String,
-) -> AppResult<SynthesisStatus> {
+pub fn synthesis_status(state: State<'_, AppState>, job_id: String) -> AppResult<SynthesisStatus> {
     let conn = state.db.connect()?;
     let job = el_db::repo::synthesis::get_job(&conn, &job_id)?;
     let running = state.synthesis.contains(&job_id);
@@ -751,14 +758,14 @@ pub fn synthesis_jobs(state: State<'_, AppState>, limit: u32) -> AppResult<Vec<S
 #[specta::specta]
 pub fn synthesis_cancel(state: State<'_, AppState>, job_id: String) -> AppResult<()> {
     state.synthesis.cancel(&job_id);
-    
+
     // Force kill the sidecar to break deadlocks
     if let Ok(mut guard) = state.sidecar.inner.child.lock() {
         if let Some(active_child) = guard.take() {
             let _ = active_child.kill();
         }
     }
-    
+
     Ok(())
 }
 
@@ -794,12 +801,14 @@ pub fn synthesis_save_output(
         Some("No folder") | Some("") | None => None,
         Some(id) => Some(id.to_string()),
     };
-    
+
     let title = title.trim().to_string();
     if title.is_empty() {
-        return Err(AppError::InvalidInput("title must not be blank".to_string()));
+        return Err(AppError::InvalidInput(
+            "title must not be blank".to_string(),
+        ));
     }
-    
+
     let conn = state.db.connect()?;
     let job = el_db::repo::synthesis::require_job(&conn, &job_id)?;
     let output = job.output.as_deref().ok_or_else(|| {
@@ -823,7 +832,8 @@ pub fn synthesis_save_output(
 
                 // Replace the ID with the Markdown link
                 final_content = final_content.replace(&format!("[{}]", doc_ref), &replacement);
-                final_content = final_content.replace(&format!("[doc_ref:{}]", doc_ref), &replacement);
+                final_content =
+                    final_content.replace(&format!("[doc_ref:{}]", doc_ref), &replacement);
             }
         }
     }
@@ -840,7 +850,7 @@ pub fn synthesis_save_output(
             created_from_note_id: None,
         },
     )?;
-    
+
     drop(conn);
     state.embed.enqueue(note.id.clone());
     Ok(note)
