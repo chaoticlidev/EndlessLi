@@ -13,6 +13,7 @@ import type {
   ParamValue,
   Script,
   Skill,
+  SynthesisStartInput,
   UpdateLibraryItem,
 } from "./bindings";
 
@@ -590,6 +591,74 @@ export function useSaveResults() {
       ),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: ["notes"] });
+    },
+  });
+}
+
+/** Synthesis jobs history, newest first. */
+export function useSynthesisHistory(limit = 50) {
+  return useQuery({
+    queryKey: ["synthesis-history", limit],
+    queryFn: () => call(() => commands.synthesisJobs(limit)),
+  });
+}
+
+export function useSynthesisJob(id: string | null) {
+  return useQuery({
+    queryKey: ["synthesis-job", id],
+    queryFn: () => call(() => commands.synthesisGet(id ?? "")),
+    enabled: id !== null,
+  });
+}
+
+export function useStartSynthesis() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: SynthesisStartInput) =>
+      call(() => commands.synthesisStart(input)),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["synthesis-history"] });
+    },
+  });
+}
+
+export function useCancelSynthesis() {
+  return useMutation({
+    mutationFn: (id: string) =>
+      call(() => commands.synthesisCancel(id)),
+  });
+}
+
+export function useDeleteSynthesis() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => call(() => commands.synthesisDelete(id)),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["synthesis-history"] });
+    },
+  });
+}
+
+export function useSaveSynthesisOutput() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (args: {
+      id: string;
+      title: string;
+      projectId: string | null;
+      folderId: string | null;
+    }) =>
+      call(() =>
+        commands.synthesisSaveOutput(
+          args.id,
+          args.title,
+          args.projectId,
+          args.folderId,
+        ),
+      ),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["notes"] });
+      void client.invalidateQueries({ queryKey: ["synthesis-history"] });
     },
   });
 }

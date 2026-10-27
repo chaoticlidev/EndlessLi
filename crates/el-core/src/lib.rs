@@ -49,8 +49,8 @@ pub enum AppError {
 /// Convenience alias used by all command handlers and repositories.
 pub type AppResult<T> = Result<T, AppError>;
 
-/// Current schema version. Bumped by migrations in `el-db` (Phase 1).
-pub const SCHEMA_VERSION: u32 = 1;
+/// Current schema version. Bumped by migrations in `el-db` (Phase 14).
+pub const SCHEMA_VERSION: u32 = 2;
 
 #[cfg(test)]
 mod tests {

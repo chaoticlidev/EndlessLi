@@ -16,7 +16,7 @@ use tauri_plugin_shell::ShellExt;
 
 pub const MAX_RESTARTS: u32 = 1000;
 pub const RESTART_WINDOW_SECS: u64 = 300;
-pub const CALL_TIMEOUT_SECS: u64 = 90;
+pub const CALL_TIMEOUT_SECS: u64 = 1000;
 pub const HEALTH_TIMEOUT_SECS: u64 = 60;
 /// Delay before restarting a crashed sidecar to let the OS reclaim the old process.
 const CRASH_BACKOFF_MS: u64 = 2000;
@@ -47,7 +47,7 @@ enum LaunchPlan {
 
 /// Holds either a Tauri sidecar handle or a Tokio child, depending on mode.
 #[allow(clippy::large_enum_variant)]
-enum ActiveChild {
+pub enum ActiveChild {
     Tauri(CommandChild),
     Tokio(tokio::process::Child),
 }
@@ -57,6 +57,21 @@ impl std::fmt::Debug for ActiveChild {
         match self {
             ActiveChild::Tauri(_) => write!(f, "ActiveChild::Tauri"),
             ActiveChild::Tokio(_) => write!(f, "ActiveChild::Tokio"),
+        }
+    }
+}
+
+impl ActiveChild {
+    pub fn kill(self) -> std::io::Result<()> {
+        match self {
+            ActiveChild::Tauri(child) => {
+                let _ = child.kill();
+                Ok(())
+            }
+            ActiveChild::Tokio(mut child) => {
+                let _ = child.start_kill(); 
+                Ok(())
+            }
         }
     }
 }
@@ -91,16 +106,16 @@ impl ChildStdin {
 
 #[derive(Debug, Clone)]
 pub struct SidecarManager {
-    inner: Arc<ManagerInner>,
+    pub inner: Arc<ManagerInner>,
 }
 
 #[derive(Debug)]
-struct ManagerInner {
+pub struct ManagerInner {
     restarts: AtomicU32,
     last_crash_at: Mutex<Option<std::time::Instant>>,
     status: Mutex<SidecarStatus>,
     next_id: AtomicU64,
-    child: Mutex<Option<ActiveChild>>,
+    pub child: Mutex<Option<ActiveChild>>,
     stdin: tokio::sync::Mutex<Option<ChildStdin>>,
     pending: Mutex<HashMap<u64, oneshot::Sender<Result<Value, SidecarRpcError>>>>,
     status_tx: mpsc::UnboundedSender<SidecarStatus>,

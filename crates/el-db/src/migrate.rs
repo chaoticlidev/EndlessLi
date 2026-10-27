@@ -7,12 +7,15 @@ use el_core::{AppError, AppResult};
 use rusqlite::Connection;
 use rusqlite_migration::{Migrations, M};
 
-const MIGRATIONS_SLICE: &[M<'_>] = &[M::up(include_str!("../migrations/0001_init.sql"))];
+const MIGRATIONS_SLICE: &[M<'_>] = &[
+    M::up(include_str!("../migrations/0001_init.sql")),
+    M::up(include_str!("../migrations/0002_synthesis.sql")),
+];
 
 const MIGRATIONS: Migrations<'_> = Migrations::from_slice(MIGRATIONS_SLICE);
 
 /// Schema version a freshly migrated database reports.
-pub const TARGET_SCHEMA_VERSION: u32 = 1;
+pub const TARGET_SCHEMA_VERSION: u32 = 2;
 
 /// Applies pending migrations atomically. Safe to call on every open.
 pub fn run(conn: &mut Connection) -> AppResult<()> {

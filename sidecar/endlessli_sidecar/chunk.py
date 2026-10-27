@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import itertools
 from typing import Any
+import re
+import sys
 
+_UNPAIRED_SURROGATES = re.compile(r"[\ud800-\udfff]")
 
 def _tokens(text: str) -> int:
     return max(1, len(text) // 4)
-
 
 def chunk_documents(
     documents: list[dict[str, Any]],
@@ -26,21 +28,25 @@ def chunk_documents(
         text = str(doc.get("text") or doc.get("content") or "")
         if not text.strip():
             continue
+        text = _UNPAIRED_SURROGATES.sub("", text)
+        text = text[:100_000]
         paragraphs = [p for p in text.split("\n\n") if p.strip()]
         if not paragraphs:
             paragraphs = [text]
         current: list[str] = []
         current_tokens = 0
         char_cursor = 0
+        # precompute offsets (O(N) scan instead of O(N^2) search)
         para_offsets: list[tuple[int, int]] = []
-        # precompute offsets
-        search_from = 0
+        cursor = 0
         for p in paragraphs:
-            idx = text.find(p, search_from)
+            # Find the start of the paragraph after the cursor
+            idx = text.find(p, cursor)
             if idx < 0:
-                idx = search_from
+                idx = cursor
             para_offsets.append((idx, idx + len(p)))
-            search_from = idx + len(p)
+            # Move cursor past this paragraph for the next search
+            cursor = idx + len(p)
         i = 0
         n = len(paragraphs)
         while i < n:

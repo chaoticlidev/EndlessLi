@@ -2,6 +2,7 @@
 
 use el_core::{AppError, AppResult, NewScript, NewSkill, Script, Skill};
 use rusqlite::{Connection, Row};
+use rusqlite::params;
 
 use super::{bool_param, check_not_blank, get_bool, map_db, new_id, now_ts};
 
@@ -108,6 +109,54 @@ pub fn delete_skill(conn: &Connection, name: &str) -> AppResult<()> {
     if affected == 0 {
         return Err(AppError::NotFound(format!("skill {name}")));
     }
+    Ok(())
+}
+
+pub fn upsert_builtin_skill(conn: &Connection, skill: &NewSkill) -> AppResult<()> {
+    conn.execute(
+        "INSERT INTO skills (id, name, description, content, parameters, category, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)
+         ON CONFLICT(name) DO UPDATE SET
+            description = excluded.description,
+            content = excluded.content,
+            parameters = excluded.parameters,
+            category = excluded.category,
+            updated_at = excluded.updated_at",
+        params![
+            uuid::Uuid::now_v7().to_string(),
+            skill.name,
+            skill.description,
+            skill.content,
+            skill.parameters,
+            skill.category,
+            chrono::Utc::now().timestamp()
+        ],
+    ).map_err(|e| AppError::Database(e.to_string()))?;
+    Ok(())
+}
+
+pub fn upsert_builtin_script(conn: &Connection, script: &NewScript) -> AppResult<()> {
+    conn.execute(
+        "INSERT INTO scripts (id, name, description, content, parameters, category, allow_network, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)
+         ON CONFLICT(name) DO UPDATE SET
+            description = excluded.description,
+            content = excluded.content,
+            parameters = excluded.parameters,
+            category = excluded.category,
+            allow_network = excluded.allow_network,
+            updated_at = excluded.updated_at",
+        params![
+            uuid::Uuid::now_v7().to_string(),
+            script.name,
+            script.description,
+            script.content,
+            script.parameters,
+            script.category,
+            script.allow_network,
+            chrono::Utc::now().timestamp()
+        ],
+    ).map_err(|e| AppError::Database(e.to_string()))?;
     Ok(())
 }
 

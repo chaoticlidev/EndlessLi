@@ -10,26 +10,11 @@ use el_core::{AppResult, NewScript, NewSkill};
 use crate::script::{parse_script, to_new_script};
 use crate::skill::{parse_skill, to_new_skill};
 
-/// Three example skills covering summarization, explanation, and structuring.
-pub const SKILL_DOCUMENTS: &[&str] = &[
-    r#"---
-name: Summarize
-description: Condense a passage into its key points.
-category: writing
-parameters:
-  - name: text
-    description: The passage to summarize.
-    required: true
-  - name: length
-    description: Target length, e.g. "3 bullet points" or "one paragraph".
-    default: 3 bullet points
----
-Summarize the following passage into {{length}}. Preserve names, numbers, and
-conclusions, and do not add any information that is not present in the source.
+// --- SKILLS ---
 
-Passage:
-{{text}}
-"#,
+/// Six native skills, powered by the LLM.
+/// These transform text, analyze data, and structure thoughts.
+pub const SKILL_DOCUMENTS: &[&str] = &[
     r#"---
 name: Explain Simply
 description: Explain a topic in plain language for a general audience.
@@ -42,39 +27,100 @@ parameters:
     description: Who the explanation is for.
     default: a curious adult with no background in the field
 ---
-Explain {{topic}} to {{audience}}. Use one concrete analogy, keep it under 200
-words, and finish with a single sentence on why it matters.
+Explain {{topic}} to {{audience}}. Use one concrete analogy, keep it under 200 words, and finish with a single sentence on why it matters.
 "#,
     r#"---
-name: Meeting Notes
-description: Turn a rough transcript into clean, structured meeting notes.
-category: productivity
+name: Summarize
+description: Condense a passage into its key points.
+category: text
 parameters:
-  - name: notes
-    description: The raw notes or transcript.
+  - name: text
+    description: The text to summarize.
     required: true
 ---
-Turn the following raw notes into clean meeting notes with three sections:
-Summary, Decisions, and Action Items. List each action item with its owner when
-one is named in the source.
+Summarize the following text. Keep the summary concise, focusing only on the most important facts, arguments, and conclusions. Do not add any new information.
 
-Raw notes:
-{{notes}}
+Text:
+{{text}}
+"#,
+    r#"---
+name: Action Items
+description: Extract every actionable task, deadline, or assigned responsibility into a checklist.
+category: text
+parameters:
+  - name: text
+    description: The text (e.g., meeting notes, email) to extract tasks from.
+    required: true
+---
+Analyze the text below. Extract every actionable task, deadline, or assigned responsibility. 
+Output them ONLY as a Markdown checklist. Use the format: `- [ ] Task (Assigned to: Name, Due: Date)` if the details are present.
+
+Text:
+{{text}}
+"#,
+    r#"---
+name: Editor
+description: Rewrite text based on specific constraints (e.g., shorter, more direct).
+category: text
+parameters:
+  - name: text
+    description: The text to edit.
+    required: true
+  - name: instructions
+    description: How to rewrite the text.
+    default: "30% shorter, more direct, and active-voice, but keep all technical jargon intact"
+---
+Rewrite the following text according to these instructions: {{instructions}}.
+
+Text:
+{{text}}
+"#,
+    r#"---
+name: Data to Table
+description: Extract key entities from text into a Markdown table.
+category: text
+parameters:
+  - name: text
+    description: The text to extract data from.
+    required: true
+---
+Read the following text and extract the key entities and their attributes. 
+Output ONLY a Markdown table with the following columns: `Entity | Description | Relevance`. Do not include any introductory or concluding text.
+
+Text:
+{{text}}
+"#,
+    r#"---
+name: Steelman This
+description: Rewrites a weak argument into its strongest, most charitable form.
+category: learning
+parameters:
+  - name: argument
+    description: The text or argument to steelman.
+    required: true
+---
+Read the following argument:
+"{{argument}}"
+
+Rewrite it as a "steelman"—the most charitable, logically sound, and well-reasoned version of this argument possible. Remove logical fallacies, strengthen the premises, and make it persuasive to a neutral observer.
 "#,
 ];
 
-/// Two example scripts, both offline: one text analysis, one data summary.
+// --- SCRIPTS ---
+
+/// Six native scripts, running locally on the user's machine.
+/// These are deterministic tasks (math, file parsing, formatting) to save API tokens.
 pub const SCRIPT_DOCUMENTS: &[&str] = &[
     r#""""
-name: Text Stats
-description: Report word, line, and character counts plus the most frequent words.
+name: Keyword Extractor
+description: Calculates reading time, word count, and extracts top keywords.
 category: text
 parameters:
   - name: text
     description: The text to analyze.
     required: true
-  - name: top
-    description: How many frequent words to show.
+  - name: top_n
+    description: Number of keywords to return.
     default: "10"
 allow_network: false
 """
@@ -86,60 +132,230 @@ from collections import Counter
 
 params = json.load(open(os.environ["ENDLESSLI_INPUT"], encoding="utf-8"))
 text = params.get("text", "")
-top = int(params.get("top") or 10)
+top_n = int(params.get("top_n") or 10)
+
+# Built-in basic stopwords to avoid dependencies
+STOPWORDS = set(["the", "and", "is", "in", "it", "to", "of", "for", "on", "with", "as", "this", "that", "are", "was", "be", "at", "by", "from", "or", "an", "but", "not", "you", "we", "they", "he", "she", "it's", "i", "a"])
 
 words = re.findall(r"[A-Za-z0-9']+", text.lower())
-counts = Counter(words)
+filtered_words = [w for w in words if w not in STOPWORDS and len(w) > 2]
+
+# Stats
+word_count = len(words)
+char_count = len(text)
+# Standard reading time: 200 words per minute
+reading_time = max(1, round(word_count / 200))
 
 print("| Metric | Value |")
 print("| --- | --- |")
-print(f"| Characters | {len(text)} |")
-print(f"| Words | {len(words)} |")
-print(f"lines: {text.count(chr(10)) + 1}")
-print(f"unique words: {len(counts)}")
+print(f"| Word count | {word_count} |")
+print(f"| Character count | {char_count} |")
+print(f"| Estimated reading time | ~{reading_time} min |")
 print()
-print(f"top {min(top, len(counts))} words:")
-for word, count in counts.most_common(top):
-    print(f"  {word}: {count}")
+print("Top Keywords:")
+counts = Counter(filtered_words)
+for word, count in counts.most_common(top_n):
+    print(f"- {word} ({count})")
 "#,
     r#""""
-name: CSV Summary
-description: Summarize CSV text with row, column, and per-column statistics.
+name: CSV to Markdown
+description: Converts a CSV file into a clean Markdown table.
 category: data
 parameters:
-  - name: csv
-    description: The CSV text, including a header row.
+  - name: csv_content
+    description: The raw CSV text.
     required: true
 allow_network: false
 """
 
+import json
+import os
 import csv
 import io
+
+params = json.load(open(os.environ["ENDLESSLI_INPUT"], encoding="utf-8"))
+csv_data = params.get("csv_content", "")
+
+reader = csv.reader(io.StringIO(csv_data))
+rows = list(reader)
+if not rows:
+    print("No data found.")
+else:
+    # Build Markdown header
+    headers = rows[0]
+    print("| " + " | ".join(headers) + " |")
+    print("|" + "|".join(["---"] * len(headers)) + "|")
+    
+    # Build rows
+    for row in rows[1:]:
+        # Pad row if it's shorter than headers
+        padded = row + [""] * (len(headers) - len(row))
+        print("| " + " | ".join(padded[:len(headers)]) + " |")
+"#,
+    r#""""
+name: Basic CSV Cleaner
+description: Removes duplicate rows and drops any row containing an empty cell.
+category: data
+parameters:
+  - name: csv_content
+    description: The raw CSV text.
+    required: true
+allow_network: false
+"""
+
+import json
+import os
+import csv
+import io
+
+params = json.load(open(os.environ["ENDLESSLI_INPUT"], encoding="utf-8"))
+csv_data = params.get("csv_content", "")
+
+reader = csv.reader(io.StringIO(csv_data))
+rows = list(reader)
+
+if not rows:
+    print("No data found.")
+    raise SystemExit(1)
+
+header = rows[0]
+body = rows[1:]
+
+# Drop duplicates and rows with empty cells
+seen = set()
+cleaned_body = []
+
+for row in body:
+    # Pad row to match header length
+    padded_row = row + [""] * (len(header) - len(row))
+    
+    # Drop if any cell is empty
+    if any(cell.strip() == "" for cell in padded_row[:len(header)]):
+        continue
+        
+    row_tuple = tuple(padded_row[:len(header)])
+    if row_tuple not in seen:
+        seen.add(row_tuple)
+        cleaned_body.append(padded_row[:len(header)])
+
+# Output as CSV
+out = io.StringIO()
+writer = csv.writer(out)
+writer.writerow(header)
+writer.writerows(cleaned_body)
+print(out.getvalue())
+"#,
+    r#""""
+name: YouTube Transcript
+description: Extracts the plain text transcript from a YouTube video URL.
+category: text
+parameters:
+  - name: url
+    description: The YouTube video URL.
+    required: true
+allow_network: true
+"""
+
+import json
+import os
+import re
+
+# Note: This script requires youtube-transcript-api
+# Ensure it is added to your Python sidecar/venv requirements
+try:
+    from youtube_transcript_api import YouTubeTranscriptApi
+except ImportError:
+    print("Error: youtube-transcript-api is not installed.")
+    raise SystemExit(1)
+
+params = json.load(open(os.environ["ENDLESSLI_INPUT"], encoding="utf-8"))
+url = params.get("url", "")
+
+# Extract Video ID from URL
+video_id_match = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11}).*", url)
+if not video_id_match:
+    print("Error: Could not extract YouTube video ID from URL.")
+    raise SystemExit(1)
+
+video_id = video_id_match.group(1)
+
+try:
+    # New API: Instantiate the class, then call fetch
+    ytt_api = YouTubeTranscriptApi()
+    transcript = ytt_api.fetch(video_id)
+    
+    # The new API returns objects with a .text attribute, not a dict
+    full_text = " ".join([snippet.text for snippet in transcript])
+    # Clean up newlines
+    full_text = full_text.replace("\n", " ")
+    print(full_text)
+except Exception as e:
+    print(f"Error fetching transcript: {e}")
+"#,
+    r#""""
+name: Deduplicator
+description: Removes duplicate lines from a list and optionally sorts them.
+category: text
+parameters:
+  - name: text
+    description: The list of items (one per line).
+    required: true
+  - name: sort
+    description: Set to "true" to sort alphabetically.
+    default: "false"
+allow_network: false
+"""
+
 import json
 import os
 
 params = json.load(open(os.environ["ENDLESSLI_INPUT"], encoding="utf-8"))
-rows = list(csv.reader(io.StringIO(params.get("csv", ""))))
-if not rows:
-    print("no data")
-    raise SystemExit(1)
+text = params.get("text", "")
+sort_val = params.get("sort", False)
+# Handle both string "true" and boolean True
+do_sort = str(sort_val).lower() == "true"
 
-header, *body = rows
-print(f"columns: {len(header)}")
-print(f"rows: {len(body)}")
-for index, column in enumerate(header):
-    values = [row[index] for row in body if index < len(row)]
-    numbers = []
-    for value in values:
-        try:
-            numbers.append(float(value))
-        except ValueError:
-            pass
-    if numbers and len(numbers) == len(values):
-        mean = sum(numbers) / len(numbers)
-        print(f"{column}: numeric min={min(numbers)} max={max(numbers)} mean={mean:.2f}")
-    else:
-        print(f"{column}: {len(set(values))} unique value(s)")
+lines = text.splitlines()
+cleaned_lines = []
+seen = set()
+
+for line in lines:
+    stripped = line.strip()
+    if stripped and stripped not in seen:
+        seen.add(stripped)
+        cleaned_lines.append(stripped)
+
+if do_sort:
+    cleaned_lines.sort()
+
+for line in cleaned_lines:
+    print(line)
+"#,
+    r#""""
+name: Randomizer
+description: Takes a list of items and randomly selects one.
+category: text
+parameters:
+  - name: text
+    description: The list of items (one per line).
+    required: true
+allow_network: false
+"""
+
+import json
+import os
+import random
+
+params = json.load(open(os.environ["ENDLESSLI_INPUT"], encoding="utf-8"))
+text = params.get("text", "")
+
+lines = [line.strip() for line in text.splitlines() if line.strip()]
+
+if not lines:
+    print("Error: No items provided.")
+else:
+    choice = random.choice(lines)
+    print(f"**Selected:** {choice}")
 "#,
 ];
 
@@ -172,9 +388,9 @@ mod tests {
     #[test]
     fn builtins_parse_and_are_valid() {
         let skills = builtin_skills().expect("skills parse");
-        assert_eq!(skills.len(), 3);
+        assert_eq!(skills.len(), 6);
         let scripts = builtin_scripts().expect("scripts parse");
-        assert_eq!(scripts.len(), 2);
+        assert_eq!(scripts.len(), 6);
     }
 
     #[test]

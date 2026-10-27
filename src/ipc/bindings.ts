@@ -241,6 +241,40 @@ export const commands = {
 	sidecarStatus: () => typedError<string, AppError>(__TAURI_INVOKE("sidecar_status")),
 	compressionStart: (documents: CompressionDoc[], k: number | null, maxContextTokens: number | null) => typedError<CompressionOutput[], AppError>(__TAURI_INVOKE("compression_start", { documents, k, maxContextTokens })),
 	compressionSaveOutputs: (outputs: CompressionOutput[], projectId: string | null, folderId: string | null) => typedError<Note[], AppError>(__TAURI_INVOKE("compression_save_outputs", { outputs, projectId, folderId })),
+	/**
+	 *  Starts a synthesis run and returns the job id immediately.
+	 * 
+	 *  Progress streams through `synthesis://progress` events. The run can be
+	 *  cancelled via `synthesis_cancel`.
+	 */
+	synthesisStart: (input: SynthesisStartInput) => typedError<string, AppError>(__TAURI_INVOKE("synthesis_start", { input })),
+	/**  Returns whether a synthesis run is currently in progress. */
+	synthesisStatus: (jobId: string) => typedError<SynthesisStatus, AppError>(__TAURI_INVOKE("synthesis_status", { jobId })),
+	/**  Fetches a single synthesis job, if it exists. */
+	synthesisGet: (jobId: string) => typedError<{
+	id: string,
+	title: string,
+	status: string,
+	k: number,
+	media_type: string,
+	instructions: string | null,
+	doc_refs: string,
+	model: string | null,
+	tokens_in: number,
+	tokens_out: number,
+	output: string | null,
+	error_message: string | null,
+	created_at: number,
+	completed_at: number,
+} | null, AppError>(__TAURI_INVOKE("synthesis_get", { jobId })),
+	/**  Lists all synthesis jobs newest-first. */
+	synthesisJobs: (limit: number) => typedError<SynthesisJob[], AppError>(__TAURI_INVOKE("synthesis_jobs", { limit })),
+	/**  Cancels a running synthesis. Partial output is kept. */
+	synthesisCancel: (jobId: string) => typedError<null, AppError>(__TAURI_INVOKE("synthesis_cancel", { jobId })),
+	/**  Deletes a synthesis job. If still running, it is cancelled first. */
+	synthesisDelete: (jobId: string) => typedError<null, AppError>(__TAURI_INVOKE("synthesis_delete", { jobId })),
+	/**  Saves the synthesis output as a note. */
+	synthesisSaveOutput: (jobId: string, title: string, projectId: string | null, folderId: string | null) => typedError<Note, AppError>(__TAURI_INVOKE("synthesis_save_output", { jobId, title, projectId, folderId })),
 	/**  Lists skills alphabetically. */
 	skillList: () => typedError<Skill[], AppError>(__TAURI_INVOKE("skill_list")),
 	/**  Fetches one skill by name. */
@@ -311,6 +345,7 @@ export const events = {
 	researchResult: makeEvent<ResearchResultEvent>("research://result"),
 	researchStatus: makeEvent<ResearchStatusEvent>("research://status"),
 	researchStep: makeEvent<ResearchStepEvent>("research://step"),
+	synthesisProgress: makeEvent<SynthesisProgressEvent>("synthesis://progress"),
 };
 
 /* Types */
@@ -733,6 +768,75 @@ export type SkillRunOutcome = {
 	output: string,
 	usage: ChatUsage,
 	budget_warning: string | null,
+};
+
+/**  A document to synthesize, mirroring `CompressionDoc`. */
+export type SynthesisDoc = {
+	doc_ref: string,
+	text: string,
+};
+
+/**  A persisted synthesis job, mapped from the DB row. */
+export type SynthesisJob = {
+	id: string,
+	title: string,
+	status: string,
+	k: number,
+	media_type: string,
+	instructions: string | null,
+	doc_refs: string,
+	model: string | null,
+	tokens_in: number,
+	tokens_out: number,
+	output: string | null,
+	error_message: string | null,
+	created_at: number,
+	completed_at: number,
+};
+
+/**
+ *  The result of a completed synthesis: a title, media-type content, and the
+ *  doc refs cited inside the content.
+ */
+export type SynthesisOutput = {
+	title: string,
+	content: string,
+	sources: string[],
+};
+
+/**  Progress streamed to the frontend during a synthesis run. */
+export type SynthesisProgressEvent = {
+	job_id: string,
+	/**
+	 *  Pipeline stage: "in_progress", "chunking", "embedding", "clustering",
+	 *  "generating", "complete", "error".
+	 */
+	stage: string,
+	message: string,
+	progress: number,
+	/**  Present only on the completion event; carries the final output. */
+	output: SynthesisOutput | null,
+	/**  Present only on the error event; carries the failure message. */
+	error: string | null,
+};
+
+/**  Input to `synthesis_start`. */
+export type SynthesisStartInput = {
+	title: string,
+	documents: SynthesisDoc[],
+	k: number | null,
+	max_context_tokens: number,
+	media_type: string,
+	instructions: string,
+	project_id: string | null,
+	folder_id: string | null,
+};
+
+/**  Lightweight status returned by `synthesis_status`. */
+export type SynthesisStatus = {
+	job_id: string,
+	status: string,
+	running: boolean,
 };
 
 /**  A case-insensitively unique label attachable to notes and library items. */

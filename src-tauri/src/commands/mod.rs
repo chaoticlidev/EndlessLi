@@ -21,5 +21,6 @@ pub mod research;
 pub mod secrets;
 pub mod settings;
 pub mod skills;
+pub mod synthesis;
 pub mod tags;
 pub mod you_mcp;

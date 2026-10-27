@@ -8,6 +8,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
+use tauri::AppHandle;
 use tokio_util::sync::CancellationToken;
 
 use crate::sidecar::SidecarManager;
@@ -15,6 +16,8 @@ use crate::sidecar::SidecarManager;
 /// Resources shared across all Tauri commands.
 #[derive(Debug, Clone)]
 pub struct AppState {
+    /// Tauri app handle, used to emit events to the frontend.
+    pub app_handle: AppHandle,
     /// Pooled SQLite handle (migrated on open).
     pub db: el_db::Database,
     /// Python sidecar lifecycle and RPC client.
@@ -23,6 +26,8 @@ pub struct AppState {
     pub research: ResearchRegistry,
     /// Broadcast channel for research progress, forwarded to Tauri events.
     pub research_tx: tokio::sync::mpsc::UnboundedSender<el_research::ResearchEvent>,
+    /// Cancellation tokens for in-flight synthesis runs, by job id.
+    pub synthesis: SynthesisRegistry,
     /// Note ids waiting to be embedded by the background worker.
     pub embed: EmbedQueue,
     /// DuckDB analytical store, when the `analytics` feature is enabled.
@@ -121,5 +126,48 @@ impl ResearchRegistry {
     /// Forgets a finished run.
     pub fn remove(&self, session_id: &str) {
         self.inner.lock().expect("registry lock").remove(session_id);
+    }
+}
+
+/// In-flight synthesis runs. Same cooperative-cancellation pattern as
+/// [`ResearchRegistry`], keyed by synthesis job id.
+#[derive(Debug, Clone, Default)]
+pub struct SynthesisRegistry {
+    inner: Arc<Mutex<HashMap<String, CancellationToken>>>,
+}
+
+impl SynthesisRegistry {
+    /// Tracks a new run.
+    pub fn insert(&self, job_id: String, cancel: CancellationToken) {
+        self.inner
+            .lock()
+            .expect("registry lock")
+            .insert(job_id, cancel);
+    }
+
+    /// Signals cancellation. Idempotent: unknown ids are already finished.
+    pub fn cancel(&self, job_id: &str) -> bool {
+        self.inner
+            .lock()
+            .expect("registry lock")
+            .get(job_id)
+            .map(|token| {
+                token.cancel();
+                true
+            })
+            .unwrap_or(false)
+    }
+
+    /// Reports whether a run is currently tracked.
+    pub fn contains(&self, job_id: &str) -> bool {
+        self.inner
+            .lock()
+            .expect("registry lock")
+            .contains_key(job_id)
+    }
+
+    /// Forgets a finished run.
+    pub fn remove(&self, job_id: &str) {
+        self.inner.lock().expect("registry lock").remove(job_id);
     }
 }

@@ -8,6 +8,7 @@ import { CommandPalette } from "./CommandPalette";
 import { KnowledgeBaseView } from "./KnowledgeBaseView";
 import { ResearchView } from "../features/research/ResearchView";
 import { LibraryView } from "../features/library/LibraryView";
+import { SynthesizeView } from "../features/synthesize/SynthesizeView";
 import { SkillsView } from "../features/skills/SkillsView";
 import { SettingsModal } from "../features/settings/SettingsView";
 import endlessliLogo from '../../assets/endlessli-logo.png';
@@ -24,12 +25,13 @@ function useGlobalShortcuts() {
         useUi.getState().setPaletteOpen(!useUi.getState().paletteOpen);
         return;
       }
-      if (mod && ["1", "2", "3", "4"].includes(event.key)) {
+      if (mod && ["1", "2", "3", "4", "5"].includes(event.key)) {
         event.preventDefault();
         const tabs = [
           "knowledge",
           "research",
           "library",
+          "synthesizes",
           "skills",
         ] as const;
         setActiveTab(tabs[Number(event.key) - 1]);
@@ -53,6 +55,8 @@ function ActiveTab() {
       return <ResearchView />;
     case "library":
       return <LibraryView />;
+    case "synthesizes":
+      return <SynthesizeView />;
     case "skills":
       return <SkillsView />;
   }

@@ -22,7 +22,7 @@ use tauri_specta::{collect_commands, collect_events, Builder, Event as SpectaEve
 use commands::{
     analytics as analytics_commands, cache, compression as compression_commands,
     embedding as embedding_commands, folders, library, links, memory as memory_commands, notes,
-    projects, research, secrets, settings, skills, tags,
+    projects, research, secrets, settings, skills, synthesis, tags,
 };
 
 /// The full IPC surface, exposed for the bindings export test.
@@ -116,6 +116,13 @@ pub fn specta_builder() -> Builder<tauri::Wry> {
             research::sidecar_status,
             compression_commands::compression_start,
             compression_commands::compression_save_outputs,
+            synthesis::synthesis_start,
+            synthesis::synthesis_status,
+            synthesis::synthesis_get,
+            synthesis::synthesis_jobs,
+            synthesis::synthesis_cancel,
+            synthesis::synthesis_delete,
+            synthesis::synthesis_save_output,
             skills::skill_list,
             skills::skill_get,
             skills::skill_parse,
@@ -137,6 +144,7 @@ pub fn specta_builder() -> Builder<tauri::Wry> {
             research::ResearchResultEvent,
             research::ResearchStatusEvent,
             links::LinkingSuggestionsEvent,
+            synthesis::SynthesisProgressEvent,
         ])
 }
 
@@ -195,7 +203,12 @@ pub fn run() {
                 Err(err) => tracing::warn!("could not seed built-ins: {err}"),
             }
 
-            let (sidecar_tx, mut sidecar_rx) = tokio::sync::mpsc::unbounded_channel();
+            // Cleanup stale jobs on startup
+            if let Ok(conn) = db.connect() {
+                let _ = el_db::repo::synthesis::fail_stale_jobs(&conn);
+            }
+
+            let (sidecar_tx, mut sidecar_rx) = tokio::sync::mpsc::unbounded_channel::<sidecar::SidecarStatus>();
             let sidecar = sidecar::SidecarManager::new(sidecar_tx, data_dir.join("models"));
 
             sidecar.set_app_handle(app.handle().clone());
@@ -207,10 +220,12 @@ pub fn run() {
             let analytics = analytics::open(&data_dir);
 
             let app_state = state::AppState {
+                app_handle: app.handle().clone(),
                 db,
                 sidecar,
                 research: state::ResearchRegistry::default(),
                 research_tx,
+                synthesis: state::SynthesisRegistry::default(),
                 embed: state::EmbedQueue::default(),
                 #[cfg(feature = "analytics")]
                 analytics,

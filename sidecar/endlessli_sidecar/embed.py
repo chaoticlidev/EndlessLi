@@ -17,6 +17,10 @@ import importlib.util
 import os
 import threading
 from typing import Any
+import re
+import sys
+
+_UNPAIRED_SURROGATES = re.compile(r"[\ud800-\udfff]")
 
 #: Default model: small, fast, 384-dim, meaningful English similarity.
 DEFAULT_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
@@ -87,11 +91,7 @@ def model_info(model: str | None = None) -> dict[str, Any]:
 
 
 def embed_texts(texts: list[str], model: str | None = None) -> dict[str, Any]:
-    """Embeds ``texts`` in order, returning ``{model, dim, embeddings}``.
-
-    Raises :class:`EmbeddingUnavailable` when the backend is missing and
-    :class:`ValueError` for an unsupported model.
-    """
+    """Embeds ``texts`` in order, returning ``{model, dim, embeddings}``."""
     name = resolve_model(model)
     if not _fastembed_available():
         raise EmbeddingUnavailable(
@@ -100,8 +100,48 @@ def embed_texts(texts: list[str], model: str | None = None) -> dict[str, Any]:
         )
     if name not in SUPPORTED_MODELS:
         raise ValueError(f"unsupported embedding model: {name}")
+    
     embedder = _load(name)
-    prepared = [text[:MAX_TEXT_CHARS] for text in texts]
-    vectors = embedder.embed(prepared)
-    embeddings = [[float(value) for value in vector] for vector in vectors]
-    return {"model": name, "dim": SUPPORTED_MODELS[name], "embeddings": embeddings}
+    
+    # --- AGGRESSIVE SANITIZATION ---
+    prepared = []
+    for i, text in enumerate(texts):
+        if text is None:
+            print(f"DEBUG: Chunk {i} is None, skipping", file=sys.stderr)
+            continue
+            
+        text_str = str(text)
+        
+        # 1. Fix mojibake (e.g., â€” -> —)
+        try:
+            text_str = text_str.encode('latin-1').decode('utf-8')
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            pass # If it fails, leave it as is and let the control char strip handle it
+            
+        # 2. Remove unpaired surrogates
+        text_str = _UNPAIRED_SURROGATES.sub("", text_str)
+        
+        # 3. Strip invisible control characters (keep newlines/tabs)
+        clean_text = "".join(ch for ch in text_str if ch == '\n' or ch == '\t' or ord(ch) >= 32)
+        
+        clean_text = clean_text.strip()
+        
+        if not clean_text:
+            print(f"DEBUG: Chunk {i} is empty after cleaning, skipping", file=sys.stderr)
+            continue
+            
+        prepared.append(clean_text[:MAX_TEXT_CHARS])
+    
+    print(f"DEBUG: Passing {len(prepared)}/{len(texts)} chunks to fastembed", file=sys.stderr)
+    
+    if not prepared:
+        return {"model": name, "dim": SUPPORTED_MODELS[name], "embeddings": []}
+
+    # Ensure fastembed gets a flat list of strings
+    try:
+        vectors = embedder.embed(prepared)
+        embeddings = [[float(value) for value in vector] for vector in vectors]
+        return {"model": name, "dim": SUPPORTED_MODELS[name], "embeddings": embeddings}
+    except Exception as e:
+        print(f"DEBUG: fastembed crashed with: {e}", file=sys.stderr)
+        raise

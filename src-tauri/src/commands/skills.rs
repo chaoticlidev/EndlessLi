@@ -1,4 +1,4 @@
-//! Skills and scripts commands (Phase 10).
+//! Skills and scripts commands
 //!
 //! Skills store a full Markdown document (frontmatter + template); scripts
 //! store full Python source (metadata docstring + code). Handlers parse to
@@ -267,16 +267,20 @@ pub async fn script_runtime() -> AppResult<ScriptRuntime> {
 ///
 /// Idempotent and non-destructive: a table that already has rows is left
 /// untouched, so a user who deletes a built-in keeps it deleted.
-pub fn seed_builtins(conn: &rusqlite::Connection) -> AppResult<()> {
-    if el_db::repo::skills::list_skills(conn)?.is_empty() {
-        for skill in el_skills::builtins::builtin_skills()? {
-            el_db::repo::skills::save_skill(conn, &skill)?;
-        }
+pub fn seed_builtins(conn: &rusqlite::Connection) -> Result<(), AppError> {
+    let skills = el_skills::builtins::builtin_skills()?;
+    let scripts = el_skills::builtins::builtin_scripts()?;
+
+    // Upsert skills
+    for skill in skills {
+        // Using the repo function. If it doesn't exist yet, we can use raw SQL here.
+        el_db::repo::skills::upsert_builtin_skill(conn, &skill)?;
     }
-    if el_db::repo::skills::list_scripts(conn)?.is_empty() {
-        for script in el_skills::builtins::builtin_scripts()? {
-            el_db::repo::skills::save_script(conn, &script)?;
-        }
+
+    // Upsert scripts
+    for script in scripts {
+        el_db::repo::skills::upsert_builtin_script(conn, &script)?;
     }
+
     Ok(())
 }

@@ -17,6 +17,7 @@ pub mod notes;
 pub mod projects;
 pub mod research;
 pub mod skills;
+pub mod synthesis;
 pub mod tags;
 
 use el_core::{AppError, AppResult};

@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { NoteScope } from "../ipc/bindings";
 
-export type TabId = "knowledge" | "research" | "library" | "skills";
+export type TabId = "knowledge" | "research" | "library" | "synthesizes" | "skills";
 export type ViewMode = "bento" | "list";
 export type EditorMode = "source" | "preview";
 

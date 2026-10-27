@@ -58,6 +58,10 @@ sidecar/*.exe
 *.sln
 *.sw?
 
+# Temporary agent/debug artifacts
+*.tmp
+*.bak
+
 # Added
 
 .pnpm-store

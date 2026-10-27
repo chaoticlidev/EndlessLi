@@ -7,6 +7,9 @@ dependencies = [
   "requests>=2.31",
   "beautifulsoup4>=4.12",
   "ddgs>=9.0",
+  "pypdf>=4.0",
+  "scikit-learn>=1.4",
+  "youtube-transcript-api>=1.2.0",
 ]
 
 [project.optional-dependencies]

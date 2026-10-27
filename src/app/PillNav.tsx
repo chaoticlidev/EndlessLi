@@ -1,6 +1,7 @@
 import {
   BookOpen,
   FlaskConical,
+  Globe,
   Library,
   Sparkles,
 } from "lucide-react";
@@ -14,9 +15,10 @@ const TABS: {
   icon: typeof BookOpen;
 }[] = [
   { id: "knowledge", label: "Knowledge Base", shortcut: "1", icon: BookOpen },
-  { id: "research", label: "Research", shortcut: "2", icon: FlaskConical },
+  { id: "research", label: "Research", shortcut: "2", icon: Globe },
   { id: "library", label: "Library", shortcut: "3", icon: Library },
-  { id: "skills", label: "Skills", shortcut: "4", icon: Sparkles },
+  { id: "synthesizes", label: "Synthesize", shortcut: "4", icon: FlaskConical },
+  { id: "skills", label: "Skills", shortcut: "5", icon: Sparkles },
 ];
 
 /** Top pill navigation bar with keyboard shortcuts Ctrl/Cmd+1..4. */
