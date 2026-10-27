@@ -4,8 +4,8 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "predev": "powershell -Command \"Get-Process endlessli-sidecar -ErrorAction SilentlyContinue | Stop-Process -Force; exit 0\"",
-    "pretauri": "powershell -Command \"Get-Process endlessli-sidecar -ErrorAction SilentlyContinue | Stop-Process -Force; exit 0\"",
+    "predev": "node scripts/kill-sidecar.cjs",
+    "pretauri": "node scripts/kill-sidecar.cjs",
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
