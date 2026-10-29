@@ -19,10 +19,6 @@ tracing = { workspace = true }
 version = "1"
 optional = true
 
-[features]
-default = []
-duckdb = ["dep:duckdb"]
-
 [dev-dependencies]
 uuid = { workspace = true }
 
