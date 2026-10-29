@@ -8,9 +8,6 @@ on:
 env:
   CARGO_TERM_COLOR: always
   CARGO_PROFILE_DEV_DEBUG: 0
-  # libduckdb-sys has no downloadable feature; its build script reads this
-  # variable and fetches the official pre-built library instead of compiling
-  # DuckDB from C++ source (which the removed `bundled` feature used to do).
   DUCKDB_DOWNLOAD_LIB: "1"
 
 jobs:
@@ -75,6 +72,16 @@ jobs:
           mkdir -p libduckdb
           curl -fL "$URL" -o duckdb.zip
           unzip duckdb.zip -d libduckdb
+      - name: Set DuckDB runtime library path
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            echo "LD_LIBRARY_PATH=${{ github.workspace }}/libduckdb:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+            echo "DUCKDB_LIB_PATH=${{ github.workspace }}/libduckdb" >> $GITHUB_ENV
+          elif [ "$RUNNER_OS" = "macOS" ]; then
+            echo "DYLD_FALLBACK_LIBRARY_PATH=${{ github.workspace }}/libduckdb:$DYLD_FALLBACK_LIBRARY_PATH" >> $GITHUB_ENV
+            echo "DUCKDB_LIB_PATH=${{ github.workspace }}/libduckdb" >> $GITHUB_ENV
+          fi
       - name: Stub sidecar binaries for CI
         shell: bash
         run: |
@@ -133,6 +140,14 @@ jobs:
           mkdir -p libduckdb
           curl -fL "$URL" -o duckdb.zip
           unzip duckdb.zip -d libduckdb
+      - name: Set DuckDB runtime library path
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            echo "LD_LIBRARY_PATH=${{ github.workspace }}/libduckdb:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+          elif [ "$RUNNER_OS" = "macOS" ]; then
+            echo "DYLD_FALLBACK_LIBRARY_PATH=${{ github.workspace }}/libduckdb:$DYLD_FALLBACK_LIBRARY_PATH" >> $GITHUB_ENV
+          fi
       - name: Stub sidecar binaries for CI
         shell: bash
         run: |
