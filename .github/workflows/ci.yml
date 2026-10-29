@@ -73,6 +73,11 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
+        env:
+          DUCKDB_DOWNLOAD_LIB: "1"
+      - run: cargo test --workspace
+        env:
+          DUCKDB_DOWNLOAD_LIB: "1"
 
   tauri-build:
     name: Tauri build (${{ matrix.os }})
@@ -114,9 +119,11 @@ jobs:
           touch src-tauri/binaries/endlessli-sidecar-x86_64-apple-darwin
       - run: pnpm install --frozen-lockfile
       - uses: tauri-apps/tauri-action@v0
+      - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPIMAGE_EXTRACT_AND_RUN: 1
           NO_STRIP: true
+          DUCKDB_DOWNLOAD_LIB: "1"
         with:
           args: ${{ matrix.os == 'ubuntu-latest' && '--bundles deb' || '' }}
