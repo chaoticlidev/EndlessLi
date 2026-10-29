@@ -13,7 +13,7 @@ export function KnowledgeBaseView() {
   return (
     <div className="flex h-full min-h-0 gap-3">
       {!sidebarCollapsed && (
-        <aside className="w-64 shrink-0 overflow-y-auto rounded-lg border border-neutral-300 bg-white p-2 dark:border-neutral-700 dark:bg-neutral-900">
+        <aside className="w-64 shrink-0 overflow-y-auto rounded-lg border border-border bg-panel p-2 thin-scroll">
           <ProjectsPanel />
         </aside>
       )}
@@ -23,7 +23,7 @@ export function KnowledgeBaseView() {
             type="button"
             title={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
             onClick={toggleSidebar}
-            className="rounded-md border border-neutral-300 p-1.5 dark:border-neutral-700"
+            className="rounded-md border border-border p-1.5"
           >
             <PanelLeft size={15} />
           </button>

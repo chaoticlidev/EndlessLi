@@ -86,7 +86,7 @@ function HistoryPanel({
   };
 
   return (
-    <aside className="flex w-60 shrink-0 flex-col gap-1 overflow-y-auto rounded-lg border border-neutral-300 bg-white p-2 dark:border-neutral-700 dark:bg-neutral-900">
+    <aside className="flex w-60 shrink-0 flex-col gap-1 overflow-y-auto rounded-lg border border-border bg-panel/85 p-2 backdrop-blur-sm">
       <h2 className="flex items-center gap-1.5 px-1 py-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">
         <History size={12} />
         History
@@ -155,7 +155,7 @@ function HistoryPanel({
 
                   {/* Dropdown */}
                   {openMenuId === session.id && (
-                    <div className="absolute right-2 top-7 z-50 w-28 rounded-md border border-neutral-200 bg-white py-1 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
+                    <div className="absolute right-2 top-7 z-50 w-28 rounded-md border border-border bg-card py-1 text-foreground shadow-lg">
                       <button
                         type="button"
                         onClick={(e) => {
@@ -322,7 +322,7 @@ function ResultsList({
       {summaries.map((result) => (
         <article
           key={result.id}
-          className="rounded-lg border border-neutral-300 bg-white p-3 dark:border-neutral-700 dark:bg-neutral-900"
+          className="rounded-lg border border-border bg-card/80 p-3 backdrop-blur-sm"
         >
           <div className="mb-1 flex items-center gap-2">
             {selectable && (
@@ -367,7 +367,7 @@ function ResultsList({
           {sources.map((source) => (
             <div
               key={source.id}
-              className="flex items-start gap-2 rounded-md border border-neutral-200 bg-white p-2 dark:border-neutral-700 dark:bg-neutral-900"
+              className="flex items-start gap-2 rounded-md border border-border bg-card/80 p-2"
             >
               <div className="min-w-0 flex-1">
                 <a
@@ -647,7 +647,7 @@ export function ResearchView() {
           <p className="pt-2 pb-1 text-sm text-red-600">{startError}</p>
         )}
 
-        <div className="mt-2 shrink-0 rounded-2xl border border-neutral-300 bg-white p-2.5 dark:border-neutral-700 dark:bg-neutral-900">
+        <div className="mt-2 shrink-0 rounded-2xl border border-border bg-panel/85 p-2.5 backdrop-blur-sm">
           <div className="flex items-center gap-2">
             <Search size={15} className="shrink-0 text-neutral-400" />
             <input

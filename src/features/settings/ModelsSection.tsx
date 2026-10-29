@@ -581,7 +581,7 @@ export function ModelsSection() {
               )}
 
               {outcome && outcome.provider === provider.id && (
-                <div className="rounded-md bg-neutral-100 p-2 text-xs dark:bg-neutral-800">
+                <div className="rounded-md bg-muted p-2 text-xs">
                   <p>
                     <span className="font-medium">Reply:</span>{" "}
                     {outcome.result.text || "(empty)"}

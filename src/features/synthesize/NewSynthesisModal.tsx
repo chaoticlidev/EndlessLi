@@ -375,7 +375,7 @@ export function NewSynthesisModal({
       onClick={onClose}
     >
       <div
-        className="flex w-full max-w-3xl flex-col gap-4 rounded-lg border border-neutral-300 bg-white p-4 shadow-xl dark:border-neutral-700 dark:bg-neutral-900"
+        className="flex w-full max-w-3xl flex-col gap-4 rounded-lg border border-border bg-card p-4 text-foreground shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-sm font-semibold">New synthesis</h2>

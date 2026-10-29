@@ -85,7 +85,7 @@ function HistoryPanel({
   })();
 
   return (
-    <aside className="flex w-64 shrink-0 flex-col gap-1 overflow-y-auto rounded-lg border border-neutral-300 bg-white p-2 dark:border-neutral-700 dark:bg-neutral-900">
+    <aside className="flex w-64 shrink-0 flex-col gap-1 overflow-y-auto rounded-lg border border-border bg-panel/85 p-2 backdrop-blur-sm">
       <div className="flex items-center justify-between px-1 py-1">
         <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-neutral-500">
           <History size={12} />
@@ -195,7 +195,7 @@ function OutputView({ jobId, content }: { jobId: string; content: string }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="rounded-lg border border-neutral-300 bg-white p-3 dark:border-neutral-700 dark:bg-neutral-900">
+      <div className="rounded-lg border border-border bg-card/80 p-3 backdrop-blur-sm">
         <div className="markdown-body">
           <Markdown content={content} />
         </div>
@@ -357,7 +357,7 @@ function ActiveRunView({
         )}
       </div>
 
-      <div className="flex flex-col gap-1.5 rounded-lg border border-neutral-300 bg-white p-3 dark:border-neutral-700 dark:bg-neutral-900">
+      <div className="flex flex-col gap-1.5 rounded-lg border border-border bg-card/80 p-3 backdrop-blur-sm">
         <div className="flex items-center justify-between gap-2">
           <span className="text-xs text-neutral-500">
             {progress?.stage ?? (running ? "Starting" : "Finished")}

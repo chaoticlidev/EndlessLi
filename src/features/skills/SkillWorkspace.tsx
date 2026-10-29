@@ -48,7 +48,7 @@ export function SkillWorkspace() {
 
   return (
     <div className="flex h-full min-h-0 gap-3">
-      <aside className="flex w-60 shrink-0 flex-col gap-1 overflow-y-auto rounded-lg border border-neutral-300 bg-white p-2 dark:border-neutral-700 dark:bg-neutral-900">
+      <aside className="flex w-60 shrink-0 flex-col gap-1 overflow-y-auto rounded-lg border border-border bg-panel/85 p-2 backdrop-blur-sm">
         <button
           type="button"
           onClick={() => {
@@ -105,7 +105,7 @@ export function SkillWorkspace() {
             onDeleted={() => setSelected(null)}
           />
         ) : (
-          <p className="rounded-md border border-dashed border-neutral-300 p-6 text-center text-sm text-neutral-500 dark:border-neutral-700">
+          <p className="rounded-md border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
             Select a skill, or create one.
           </p>
         )}
@@ -298,7 +298,7 @@ function SkillEditor({
         <p className="text-sm text-red-600">{errorMessage(parsed.error)}</p>
       )}
 
-      <div className="flex flex-col gap-2 rounded-lg border border-neutral-300 bg-white p-3 dark:border-neutral-700 dark:bg-neutral-900">
+      <div className="flex flex-col gap-2 rounded-lg border border-border bg-card/80 p-3 backdrop-blur-sm">
         <span className="text-sm font-semibold">Run</span>
         {skill === null ? (
           <p className="text-xs text-neutral-500">

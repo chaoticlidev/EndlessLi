@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
 
@@ -7,52 +9,40 @@
   --color-surface-dark: #2f2f2f;
   --color-accent: #396cd8;
 
-  /* Semantic theme tokens. The modal and surfaces reference these via the
-     `background`, `foreground`, `card`, and `border` color names below so the
-     palette can be restyled later by swapping the `--*` variables only.
-
-     Defined with `hsl(var(--x))` (the Tailwind v4 canonical pattern) so the
-     `bg-card` / `bg-background` / `text-foreground` / `border-border` utilities
-     resolve to OUR variables instead of Tailwind's default slate fallback. */
+  /* Semantic theme tokens mapped to CSS variables */
   --color-background: hsl(var(--background));
   --color-foreground: hsl(var(--foreground));
   --color-card: hsl(var(--card));
+  --color-panel: hsl(var(--panel));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
   --color-border: hsl(var(--border));
 }
 
-:root {
-  /* Keep native controls (scrollbars, date pickers, any remaining select)
-     legible in both themes. */
-  color-scheme: light;
-  font-family: var(--font-sans);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-text-size-adjust: 100%;
-
-  /* Pitch-black theme surface tokens (light default, see `.dark` overrides).
-     Used by the Settings modal and its dropdowns only; the app frame uses
-     neutral tokens, so these can be dark without affecting the page chrome. */
-  --background: 0 0% 0%;
+/* DARK MODE (Default) */
+:root, [data-theme="dark"] {
+  color-scheme: dark;
+  --background: 0 0% 0%; /* Pitch black base */
   --foreground: 0 0% 97%;
-  --card: 240 10% 4%;
-  --border: 210 12% 22%;
+  --card: 240 10% 15%; 
+  --panel: 240 10% 15%;
+  --muted: 240 6% 18%;
+  --muted-foreground: 240 5% 64%;
+  --border: 240 6% 22%;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
-    --background: 0 0% 0%;
-    --foreground: 0 0% 97%;
-    --card: 240 10% 4%;
-    --border: 210 12% 22%;
-  }
+/* LIGHT MODE */
+[data-theme="light"] {
+  color-scheme: light;
+  --background: 0 0% 100%; /* White base */
+  --foreground: 240 6% 10%;
+  --card: 240 6% 96%; /* Light gray panels for notes/cards */
+  --panel: 240 6% 90%; /* Slightly darker gray for sidebars */
+  --muted: 240 5% 90%;
+  --muted-foreground: 240 4% 38%;
+  --border: 240 6% 84%;
 }
 
-/* The app frame is exactly one viewport tall; anything past it would expose
-   the raw webview background. Paint the page itself so a layout slip can
-   never show a white flash. */
 html,
 body,
 #root {
@@ -60,140 +50,80 @@ body,
 }
 
 body {
-  background-color: var(--color-neutral-100);
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: var(--font-sans);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
 }
 
-@media (prefers-color-scheme: dark) {
-  body {
-    background-color: var(--color-neutral-950);
-  }
-}
-
-/* CodeMirror host: fill its container with a readable editing surface. */
+/* CodeMirror host */
 .cm-host .cm-editor {
   height: 100%;
   min-height: 16rem;
   background: transparent;
   outline: none;
 }
+.cm-host .cm-scroller { overflow: auto; }
+.cm-host .cm-content { caret-color: currentColor; }
 
-.cm-host .cm-scroller {
-  overflow: auto;
-}
-
-.cm-host .cm-content {
-  caret-color: currentColor;
-}
-
-/* Markdown preview typography (sanitized HTML, no remote styles). */
+/* Markdown preview typography */
 .markdown-body {
   font-size: 0.875rem;
   line-height: 1.6;
   overflow-wrap: break-word;
 }
-
-.markdown-body > *:first-child {
-  margin-top: 0;
-}
-
-.markdown-body h1,
-.markdown-body h2,
-.markdown-body h3,
-.markdown-body h4 {
+.markdown-body > *:first-child { margin-top: 0; }
+.markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4 {
   font-weight: 600;
   line-height: 1.3;
   margin: 1em 0 0.4em;
 }
-
-.markdown-body h1 {
-  font-size: 1.4rem;
-}
-
-.markdown-body h2 {
-  font-size: 1.2rem;
-}
-
-.markdown-body h3 {
-  font-size: 1.05rem;
-}
-
-.markdown-body p,
-.markdown-body ul,
-.markdown-body ol,
-.markdown-body pre,
-.markdown-body blockquote {
+.markdown-body h1 { font-size: 1.4rem; }
+.markdown-body h2 { font-size: 1.2rem; }
+.markdown-body h3 { font-size: 1.05rem; }
+.markdown-body p, .markdown-body ul, .markdown-body ol, .markdown-body pre, .markdown-body blockquote {
   margin: 0.5em 0;
 }
-
-.markdown-body ul,
-.markdown-body ol {
-  padding-left: 1.5rem;
-}
-
-.markdown-body ul {
-  list-style: disc;
-}
-
-.markdown-body ol {
-  list-style: decimal;
-}
-
+.markdown-body ul, .markdown-body ol { padding-left: 1.5rem; }
+.markdown-body ul { list-style: disc; }
+.markdown-body ol { list-style: decimal; }
 .markdown-body code {
   font-size: 0.85em;
   background: rgb(0 0 0 / 0.06);
   border-radius: 4px;
   padding: 0.1em 0.3em;
 }
-
-.dark .markdown-body code {
-  background: rgb(255 255 255 / 0.1);
-}
-
+[data-theme="dark"] .markdown-body code { background: rgb(255 255 255 / 0.1); }
 .markdown-body pre {
   overflow-x: auto;
-  border: 1px solid var(--color-neutral-300);
+  border: 1px solid hsl(var(--border));
   border-radius: 8px;
   padding: 0.75rem;
 }
-
-.markdown-body pre code {
-  background: transparent;
-  padding: 0;
-}
-
+.markdown-body pre code { background: transparent; padding: 0; }
 .markdown-body blockquote {
-  border-left: 3px solid var(--color-neutral-300);
+  border-left: 3px solid hsl(var(--border));
   padding-left: 0.75rem;
-  color: var(--color-neutral-500);
+  color: hsl(var(--muted-foreground));
 }
-
-.markdown-body table {
-  border-collapse: collapse;
-  margin: 0.5em 0;
-}
-
-.markdown-body th,
-.markdown-body td {
-  border: 1px solid var(--color-neutral-300);
+.markdown-body table { border-collapse: collapse; margin: 0.5em 0; }
+.markdown-body th, .markdown-body td {
+  border: 1px solid hsl(var(--border));
   padding: 0.3em 0.6em;
 }
+.markdown-body a { color: var(--color-accent); }
 
-.markdown-body a {
-  color: var(--color-accent);
-}
-
-/* Keyboard focus must stay visible on every interactive control, including
-   the custom dropdowns and icon-only buttons. */
 :focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
 
-/* Respect the OS reduced-motion preference for the app's transitions. */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
@@ -201,22 +131,21 @@ body {
   }
 }
 
-/* Settings modal internal scrollbar: thin and unobtrusive. Only applied to the
-   right-hand content pane, never to the full page or the fixed sidebar. */
-.settings-scroll {
+/* Thin, transparent scrollbar for the main content areas (Notes, Research, etc.) */
+.thin-scroll {
   scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
+  scrollbar-color: hsl(var(--border)) transparent;
 }
 
-.settings-scroll::-webkit-scrollbar {
-  width: 8px;
+.thin-scroll::-webkit-scrollbar {
+  width: 6px;
 }
 
-.settings-scroll::-webkit-scrollbar-track {
+.thin-scroll::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.settings-scroll::-webkit-scrollbar-thumb {
-  background-color: var(--border);
+.thin-scroll::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--border));
   border-radius: 4px;
 }

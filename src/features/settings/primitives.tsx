@@ -19,7 +19,7 @@ export function Section({
   children: ReactNode;
 }) {
   return (
-    <section className="flex flex-col gap-2 rounded-lg border border-border bg-background p-4">
+    <section className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-4">
       {title && <h2 className="text-sm font-semibold">{title}</h2>}
       {children}
     </section>

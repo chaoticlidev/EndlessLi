@@ -27,6 +27,27 @@ export const queryClient = new QueryClient({
 
 export type IpcError = AppError | Error;
 
+/**
+ * True when the page is running inside the Tauri webview.
+ *
+ * Tauri injects `__TAURI_INTERNALS__` before any page script runs, so its
+ * presence is a reliable, synchronous signal. `invoke()` dereferences that
+ * object without a guard, which means calling it from a plain browser (Vite
+ * preview, Storybook, or a screenshot harness) throws
+ * "Cannot read properties of undefined (reading 'invoke')" instead of a
+ * useful error. Checking once here keeps that failure readable.
+ */
+export function hasTauriRuntime(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ !==
+      "undefined"
+  );
+}
+
+export const BACKEND_UNAVAILABLE_MESSAGE =
+  "The EndlessLi backend is not available. Open the desktop app (pnpm tauri dev) to load data.";
+
 function unwrap<T>(
   result: { status: "ok"; data: T } | { status: "error"; error: AppError },
 ): T {
@@ -39,6 +60,7 @@ async function call<T>(
     { status: "ok"; data: T } | { status: "error"; error: AppError }
   >,
 ): Promise<T> {
+  if (!hasTauriRuntime()) throw new Error(BACKEND_UNAVAILABLE_MESSAGE);
   return unwrap(await fn());
 }
 

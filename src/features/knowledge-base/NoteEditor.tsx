@@ -59,14 +59,14 @@ function TagRow({ noteId }: { noteId: string }) {
         {(detail?.tags ?? []).map((tag) => (
           <span
             key={tag.id}
-            className="flex items-center gap-1 rounded-full border border-neutral-300 px-2 py-0.5 text-xs dark:border-neutral-600"
+            className="flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs"
           >
             {tag.name}
             <button
               type="button"
               aria-label={`Remove tag ${tag.name}`}
               onClick={() => unassignTag.mutate({ noteId, tagId: tag.id })}
-              className="rounded-full text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200"
+              className="rounded-full text-muted-foreground hover:text-foreground"
             >
               ×
             </button>
@@ -79,7 +79,7 @@ function TagRow({ noteId }: { noteId: string }) {
           onKeyDown={(event) => {
             if (event.key === "Enter") void addTag();
           }}
-          className="w-28 rounded-full border border-dashed border-neutral-300 bg-transparent px-2 py-0.5 text-xs outline-none dark:border-neutral-600"
+          className="w-28 rounded-full border border-dashed border-border bg-transparent px-2 py-0.5 text-xs outline-none"
         />
       </div>
       {draft.trim() && suggestions.length > 0 && (
@@ -101,7 +101,7 @@ function TagRow({ noteId }: { noteId: string }) {
                     },
                   );
                 }}
-                className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700"
+                className="rounded-full bg-muted px-2 py-0.5 text-xs hover:bg-border"
               >
                 {tag.name}
               </button>
@@ -200,8 +200,6 @@ export function NoteEditor({ noteId }: { noteId: string }) {
   const [prevDetail, setPrevDetail] = useState<NoteDetail | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // New notes open in the editor; existing notes open rendered. Once the user
-  // flips the toggle, their choice wins for the rest of this note.
   const [touched, setTouched] = useState(false);
   const [openedEmpty, setOpenedEmpty] = useState<boolean | null>(null);
   if (openedEmpty === null && detail) {
@@ -211,9 +209,6 @@ export function NoteEditor({ noteId }: { noteId: string }) {
     ? editorMode === "source"
     : editorMode === "source" || openedEmpty === true;
 
-  // Adopt server state when new detail arrives while the editor is pristine
-  // (no unsaved edits). This render-phase adjustment keeps typing intact
-  // across background refetches. `key={noteId}` remounts between notes.
   if (detail && detail !== prevDetail) {
     setPrevDetail(detail);
     if (title === saved.title && content === saved.content) {
@@ -278,20 +273,20 @@ export function NoteEditor({ noteId }: { noteId: string }) {
   }
 
   if (isPending)
-    return <p className="text-sm text-neutral-500">Loading note…</p>;
+    return <p className="text-sm text-muted-foreground">Loading note…</p>;
   if (error)
     return <p className="text-sm text-red-600">{errorMessage(error)}</p>;
   if (!detail)
-    return <p className="text-sm text-neutral-500">Note not found.</p>;
+    return <p className="text-sm text-muted-foreground">Note not found.</p>;
 
   return (
-    <div className="flex h-full flex-col gap-3 overflow-y-auto">
+    <div className="flex h-full flex-col gap-3 overflow-y-auto pr-2 thin-scroll">
       <div className="flex items-center gap-2">
         <button
           type="button"
           title="Back to notes"
           onClick={() => openNote(null)}
-          className="rounded-md border border-neutral-300 p-1.5 dark:border-neutral-700"
+          className="rounded-md border border-border p-1.5"
         >
           <ArrowLeft size={15} />
         </button>
@@ -301,7 +296,7 @@ export function NoteEditor({ noteId }: { noteId: string }) {
           placeholder="Note title"
           className="w-full bg-transparent text-xl font-semibold outline-none"
         />
-        <span className="flex shrink-0 items-center gap-1 text-xs text-neutral-400">
+        <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
           <Save size={12} />
           {saveState === "saved"
             ? "Saved"
@@ -314,7 +309,7 @@ export function NoteEditor({ noteId }: { noteId: string }) {
       <div className="flex flex-wrap items-center gap-2">
         <PlacementRow noteId={noteId} />
         <span className="flex-1" />
-        <div className="flex rounded-md border border-neutral-300 dark:border-neutral-700">
+        <div className="flex rounded-md border border-border">
           <button
             type="button"
             title="Source (Ctrl+E)"
@@ -322,7 +317,7 @@ export function NoteEditor({ noteId }: { noteId: string }) {
               setTouched(true);
               setEditorMode("source");
             }}
-            className={`flex items-center gap-1 rounded-l-md px-2 py-1 text-xs ${showSource ? "bg-neutral-200 dark:bg-neutral-700" : ""}`}
+            className={`flex items-center gap-1 rounded-l-md px-2 py-1 text-xs ${showSource ? "bg-muted" : ""}`}
           >
             <Pencil size={12} />
             Source
@@ -334,7 +329,7 @@ export function NoteEditor({ noteId }: { noteId: string }) {
               setTouched(true);
               setEditorMode("preview");
             }}
-            className={`flex items-center gap-1 rounded-r-md px-2 py-1 text-xs ${!showSource ? "bg-neutral-200 dark:bg-neutral-700" : ""}`}
+            className={`flex items-center gap-1 rounded-r-md px-2 py-1 text-xs ${!showSource ? "bg-muted" : ""}`}
           >
             <Eye size={12} />
             Preview
@@ -352,7 +347,7 @@ export function NoteEditor({ noteId }: { noteId: string }) {
               },
             )
           }
-          className="rounded-md border border-neutral-300 p-1.5 dark:border-neutral-700"
+          className="rounded-md border border-border p-1.5"
         >
           <GitBranch size={14} />
         </button>
@@ -371,7 +366,7 @@ export function NoteEditor({ noteId }: { noteId: string }) {
               });
             }
           }}
-          className="rounded-md border border-neutral-300 p-1.5 dark:border-neutral-700"
+          className="rounded-md border border-border p-1.5"
         >
           <Trash2 size={14} />
         </button>
@@ -379,7 +374,7 @@ export function NoteEditor({ noteId }: { noteId: string }) {
       {actionError && <p className="text-sm text-red-600">{actionError}</p>}
 
       {showSource ? (
-        <div className="rounded-lg border border-neutral-300 bg-white p-2 dark:border-neutral-700 dark:bg-neutral-900">
+        <div className="rounded-lg border border-border bg-card p-2">
           <CodeMirrorEditor
             key={noteId}
             initialDoc={content}
@@ -387,7 +382,7 @@ export function NoteEditor({ noteId }: { noteId: string }) {
           />
         </div>
       ) : (
-        <div className="markdown-body rounded-lg border border-neutral-300 bg-white p-4 dark:border-neutral-700 dark:bg-neutral-900">
+        <div className="markdown-body rounded-lg border border-border bg-card p-4">
           <Markdown
             content={renderWikilinksAsLinks(content)}
             components={{
@@ -437,7 +432,7 @@ function WikilinkAnchor({
       className={
         target
           ? "text-blue-700 underline dark:text-blue-400"
-          : "text-neutral-400 underline decoration-dotted"
+          : "text-muted-foreground underline decoration-dotted"
       }
     >
       {children}

@@ -281,7 +281,7 @@ export function AudioSection() {
         </label>
 
         {sample && (
-          <div className="flex flex-col gap-1 rounded-md bg-neutral-100 p-2 text-xs dark:bg-neutral-800">
+          <div className="flex flex-col gap-1 rounded-md bg-muted p-2 text-xs">
             <span className="flex items-center gap-1">
               <Volume2 size={12} /> {sample.engine} · {sample.voice} ·{" "}
               {Math.round(sample.bytes / 1024)} KiB

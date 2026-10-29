@@ -154,7 +154,7 @@ export function Select({
             ? { bottom: window.innerHeight - rect.top + 4 }
             : { top: rect.bottom + 4 }),
         }}
-        className={`z-50 overflow-y-auto rounded-md border border-neutral-300 bg-white p-1 shadow-lg dark:border-neutral-600 dark:bg-neutral-900 ${
+        className={`z-50 overflow-y-auto rounded-md border border-border bg-card p-1 text-foreground shadow-lg ${
           menuClassName ?? ""
         }`}
       >
@@ -225,7 +225,7 @@ export function Select({
             setOpen(true);
           }
         }}
-        className={`flex w-full items-center justify-between gap-2 ${shape} border border-neutral-300 bg-white ${sizing} text-left text-neutral-900 outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100`}
+        className={`flex w-full items-center justify-between gap-2 ${shape} border border-border bg-card ${sizing} text-left text-foreground outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50`}
       >
         <span className="truncate">{selected?.label ?? placeholder}</span>
         <ChevronDown

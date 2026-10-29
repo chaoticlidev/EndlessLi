@@ -2,7 +2,9 @@ import { useEffect } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Cog } from "lucide-react";
 import { useUi } from "../stores/ui";
+import { useAppearanceTheme } from "../stores/appearance";
 import { queryClient } from "../ipc/queries";
+import { AppBackground } from "../components/AppBackground";
 import { PillNav } from "./PillNav";
 import { CommandPalette } from "./CommandPalette";
 import { KnowledgeBaseView } from "./KnowledgeBaseView";
@@ -64,6 +66,7 @@ function ActiveTab() {
 
 export function App() {
   useGlobalShortcuts();
+  const resolvedTheme = useAppearanceTheme();
   const paletteNonce = useUi((state) => state.paletteNonce);
   const activeTab = useUi((state) => state.activeTab);
   const setActiveTab = useUi((state) => state.setActiveTab);
@@ -75,7 +78,10 @@ export function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <div className="flex h-screen flex-col gap-2 bg-neutral-100 p-3 text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
+      {/* `isolate` keeps the background layer's negative z-index inside this
+          shell; `bg-transparent` lets the base color come from AppBackground. */}
+      <div className="relative isolate flex h-screen flex-col gap-2 p-3 text-foreground">
+        <AppBackground tone={resolvedTheme} />
         <header className="flex items-center justify-between gap-2">
           <button onClick={() => setActiveTab("knowledge")}>
             <img src={endlessliLogo} alt="EndlessLi" className="h-8 w-8" />
@@ -86,12 +92,12 @@ export function App() {
               type="button"
               aria-label="Open settings"
               onClick={() => setSettingsOpen(true)}
-              className="rounded p-1.5 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+              className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
               title="Settings (Ctrl+,)"
             >
               <Cog size={18} />
             </button>
-            <span className="hidden text-xs text-neutral-400 sm:inline-flex">
+            <span className="hidden text-xs text-muted-foreground sm:inline-flex">
               Ctrl+K
             </span>
           </div>

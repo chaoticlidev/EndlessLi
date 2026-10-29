@@ -27,7 +27,7 @@ export function PillNav() {
   const setActiveTab = useUi((state) => state.setActiveTab);
 
   return (
-    <nav className="flex items-center gap-1 rounded-full border border-neutral-300 bg-white px-2 py-1 dark:border-neutral-700 dark:bg-neutral-900">
+    <nav className="flex items-center gap-1 rounded-full border border-border bg-panel px-2 py-1 shadow-sm">
       {TABS.map((tab) => {
         const Icon = tab.icon;
         const active = tab.id === activeTab;
@@ -39,8 +39,8 @@ export function PillNav() {
             onClick={() => setActiveTab(tab.id)}
             className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm transition-colors ${
               active
-                ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-900"
-                : "text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                ? "bg-foreground font-medium text-background shadow-sm"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
             }`}
           >
             <Icon size={15} strokeWidth={2} />

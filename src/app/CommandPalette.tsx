@@ -237,7 +237,7 @@ export function CommandPalette() {
       <div
         role="dialog"
         aria-label="Command palette"
-        className="w-full max-w-lg overflow-hidden rounded-lg border border-neutral-300 bg-white shadow-xl dark:border-neutral-700 dark:bg-neutral-900"
+        className="w-full max-w-lg overflow-hidden rounded-lg border border-border bg-card text-foreground shadow-xl"
         onClick={(event) => event.stopPropagation()}
       >
         <input

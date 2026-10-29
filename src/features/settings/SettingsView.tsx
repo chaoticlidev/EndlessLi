@@ -11,6 +11,7 @@ import {
   HardDrive,
   KeyRound,
   Loader2,
+  Palette,
   RefreshCw,
   Sparkles,
   Search,
@@ -52,6 +53,7 @@ import { Select } from "../../components/Select";
 import { useUi } from "../../stores/ui";
 import { ProviderKeyRow, Section, SettingField } from "./primitives";
 import { AudioSection } from "./AudioSection";
+import { AppearanceSection } from "./AppearanceSection";
 import { ModelsSection } from "./ModelsSection";
 
 /// Search backends available for the fallback chain. `ddgs` is always present
@@ -183,7 +185,7 @@ function ProviderKeys() {
             <p className="text-xs text-red-600">{message[provider.id]}</p>
           )}
           {outcome && outcome.provider === provider.id && (
-            <div className="rounded-md bg-neutral-100 p-2 text-xs dark:bg-neutral-800">
+            <div className="rounded-md bg-muted p-2 text-xs">
               <p>
                 <span className="font-medium">Reply:</span>{" "}
                 {outcome.result.text || "(empty)"}
@@ -242,7 +244,7 @@ function Budgets() {
             value={dailyDraft ?? daily ?? "0"}
             inputMode="numeric"
             onChange={(event) => setDailyDraft(event.target.value)}
-            className="rounded-md border border-border bg-transparent px-2 py-1 text-sm outline-none"
+            className="rounded-md border border-border bg-card px-2 py-1 text-sm outline-none"
           />
         </label>
         <label className="flex flex-1 flex-col gap-1">
@@ -253,7 +255,7 @@ function Budgets() {
             value={monthlyDraft ?? monthly ?? "0"}
             inputMode="numeric"
             onChange={(event) => setMonthlyDraft(event.target.value)}
-            className="rounded-md border border-border bg-transparent px-2 py-1 text-sm outline-none"
+            className="rounded-md border border-border bg-card px-2 py-1 text-sm outline-none"
           />
         </label>
       </div>
@@ -409,7 +411,7 @@ function SearchProvidersSection() {
           return (
             <div
               key={id}
-              className="flex flex-col gap-2 rounded-md border border-border p-2 bg-transparent"
+              className="flex flex-col gap-2 rounded-md border border-border p-2 bg-card"
             >
               <div className="flex items-center gap-2">
                 {/* UP / DOWN ARROWS */}
@@ -454,11 +456,11 @@ function SearchProvidersSection() {
                     placeholder={`Paste ${labelFor(id)} API Key...`}
                     value={keyDrafts[provider.keyId] ?? ""}
                     onChange={(e) => setKeyDrafts(prev => ({ ...prev, [provider.keyId!]: e.target.value }))}
-                    className="w-full rounded-md border border-border bg-black px-2 py-1 text-xs"
+                    className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs"
                   />
                   <button
                     onClick={() => void saveKey(provider.keyId!)}
-                    className="rounded-md border border-border px-2 py-1 text-xs hover:bg-white/10"
+                    className="rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
                   >
                     Save
                   </button>
@@ -473,7 +475,7 @@ function SearchProvidersSection() {
                     placeholder="https://searxng.example.com"
                     defaultValue={searxngUrl ?? ""}
                     onBlur={(e) => void setSetting.mutateAsync({ key: "research.searxng_url", value: e.target.value })}
-                    className="w-full rounded-md border border-border bg-transparent px-2 py-1 text-xs"
+                    className="w-full rounded-md border border-border bg-card px-2 py-1 text-xs"
                   />
                 </div>
               )}
@@ -852,7 +854,7 @@ function MemoryPanel() {
           value={newContent}
           onChange={(e) => setNewContent(e.target.value)}
           placeholder="Memory content"
-          className="rounded-md border border-border bg-transparent px-2 py-1 text-sm"
+          className="rounded-md border border-border bg-card px-2 py-1 text-sm"
         />
         <button
           type="button"
@@ -913,6 +915,7 @@ function MemoryPanel() {
 }
 
 type SettingsTabId =
+  | "appearance"
   | "models"
   | "api-keys"
   | "audio"
@@ -925,6 +928,7 @@ type SettingsTabId =
 
 const SETTINGS_TABS: { id: SettingsTabId; label: string; icon: typeof Cog }[] =
   [
+    { id: "appearance", label: "Appearance", icon: Palette },
     { id: "models", label: "Models", icon: Sparkles },
     { id: "api-keys", label: "API Keys", icon: KeyRound },
     { id: "audio", label: "Audio", icon: Volume2 },
@@ -939,6 +943,8 @@ const SETTINGS_TABS: { id: SettingsTabId; label: string; icon: typeof Cog }[] =
 /** Renders only the section for the active settings tab. */
 function SettingsTabContent({ tab }: { tab: SettingsTabId }) {
   switch (tab) {
+    case "appearance":
+      return <AppearanceSection />;
     case "models":
       return <ModelsSection />;
     case "audio":
@@ -1009,13 +1015,13 @@ export function SettingsModal() {
 
   return createPortal(
     <div
-      className="fixed inset-0 z-40 flex items-center justify-center bg-background/40 pointer-events-none"
+      className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 pointer-events-none"
     >
       <div
         role="dialog"
         aria-modal="true"
         aria-label="Settings"
-        className="pointer-events-auto flex h-full w-full max-w-4xl max-h-[80vh] flex-col overflow-hidden rounded-lg border border-border bg-card text-foreground shadow-xl"
+        className="pointer-events-auto flex h-full w-full max-w-4xl max-h-[80vh] flex-col overflow-hidden rounded-lg border border-border bg-background text-foreground shadow-xl"
         onClick={(event) => event.stopPropagation()}
       >
         <header className="flex items-center justify-between p-4">
@@ -1024,7 +1030,7 @@ export function SettingsModal() {
             type="button"
             aria-label="Close settings"
             onClick={() => setSettingsOpen(false)}
-            className="rounded p-1 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+            className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-white"
             title="Close (Esc)"
           >
             <X size={16} />
@@ -1034,7 +1040,7 @@ export function SettingsModal() {
         <div className="flex flex-1 min-h-0 overflow-hidden">
           <nav
             aria-label="Settings"
-            className="flex w-64 shrink-0 flex-col gap-1 overflow-y-hidden border-r border-border p-6"
+            className="flex w-64 shrink-0 flex-col gap-1 overflow-y-hidden border-r border-neutral-800 p-6"
           >
             {SETTINGS_TABS.map((tab) => {
               const Icon = tab.icon;
@@ -1044,11 +1050,11 @@ export function SettingsModal() {
                   key={tab.id}
                   type="button"
                   onClick={() => setActiveSettingsTab(tab.id)}
-                className={`flex items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${
-                  isActive
-                    ? "bg-white/10 text-white font-medium"
-                    : "bg-white text-black hover:bg-gray-200"
-                }`}
+                  className={`flex items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors ${
+                    isActive
+                      ? "border-foreground bg-foreground font-medium text-background"
+                      : "border-transparent text-muted-foreground hover:bg-muted hover:text-foreground"
+                  }`}
                 >
                   <Icon size={14} />
                   <span>{tab.label}</span>
@@ -1057,7 +1063,7 @@ export function SettingsModal() {
             })}
           </nav>
 
-          <div className="flex-1 overflow-y-auto p-6 settings-scroll">
+          <div className="flex-1 overflow-y-auto p-6 settings-scroll bg-background">
             <SettingsTabContent tab={activeSettingsTab} />
           </div>
         </div>

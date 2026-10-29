@@ -54,7 +54,7 @@ function ItemCard({
     <button
       type="button"
       onClick={() => onOpen(item.id)}
-      className={`flex flex-col gap-1 rounded-lg border border-neutral-300 bg-white p-3 text-left hover:border-neutral-500 dark:border-neutral-700 dark:bg-neutral-900 dark:hover:border-neutral-400 ${
+      className={`flex flex-col gap-1 rounded-lg border border-border bg-card/80 p-3 text-left backdrop-blur-sm hover:border-foreground/40 ${
         large ? "col-span-2" : ""
       }`}
     >
@@ -93,7 +93,7 @@ function ItemRow({
     <button
       type="button"
       onClick={() => onOpen(item.id)}
-      className="flex w-full items-center gap-3 rounded-md border border-neutral-300 bg-white px-3 py-2 text-left text-sm hover:border-neutral-500 dark:border-neutral-700 dark:bg-neutral-900"
+      className="flex w-full items-center gap-3 rounded-md border border-border bg-card/80 px-3 py-2 text-left text-sm backdrop-blur-sm hover:border-foreground/40"
     >
       <TypeBadge itemType={item.item_type} />
       <span className="min-w-0 flex-1 truncate font-medium">{item.title}</span>
@@ -336,7 +336,7 @@ export function LibraryView() {
   return (
     <div className="relative flex h-full min-h-0 gap-3">
       {!sidebarCollapsed && (
-        <aside className="w-56 shrink-0 overflow-y-auto rounded-lg border border-neutral-300 bg-white p-2 dark:border-neutral-700 dark:bg-neutral-900">
+        <aside className="w-56 shrink-0 overflow-y-auto rounded-lg border border-border bg-panel/85 p-2 backdrop-blur-sm">
           <LibraryPanel
             itemType={itemType}
             onItemType={setItemType}
@@ -359,7 +359,7 @@ export function LibraryView() {
             <PanelLeft size={15} />
           </button>
 
-          <div className="flex min-w-48 flex-1 items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2 py-1.5 dark:border-neutral-700 dark:bg-neutral-900">
+          <div className="flex min-w-48 flex-1 items-center gap-1.5 rounded-md border border-border bg-card/80 px-2 py-1.5 backdrop-blur-sm">
             <Search size={14} className="shrink-0 text-neutral-400" />
             <input
               value={searchText}
@@ -428,7 +428,7 @@ export function LibraryView() {
             <p className="text-sm text-neutral-500">Loading library…</p>
           )}
           {!isPending && (items ?? []).length === 0 && (
-            <p className="rounded-md border border-dashed border-neutral-300 p-6 text-center text-sm text-neutral-500 dark:border-neutral-700">
+            <p className="rounded-md border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
               Nothing here yet. Drag files in, or use Import files.
             </p>
           )}
@@ -450,7 +450,7 @@ export function LibraryView() {
       </div>
 
       {selectedId && (
-        <aside className="w-96 shrink-0 overflow-y-auto rounded-lg border border-neutral-300 bg-white p-3 dark:border-neutral-700 dark:bg-neutral-900">
+        <aside className="w-96 shrink-0 overflow-y-auto rounded-lg border border-border bg-panel/85 p-3 backdrop-blur-sm">
           <LibraryItemDetail
             key={selectedId}
             itemId={selectedId}

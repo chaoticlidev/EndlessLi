@@ -29,17 +29,17 @@ function NoteCard({ note }: { note: Note }) {
     <button
       type="button"
       onClick={() => openNote(note.id)}
-      className={`flex flex-col gap-1 rounded-lg border border-neutral-300 bg-white p-3 text-left hover:border-neutral-500 dark:border-neutral-700 dark:bg-neutral-900 dark:hover:border-neutral-400 ${
+      className={`flex flex-col gap-1 rounded-lg border border-border bg-card p-3 text-left hover:border-foreground/40 ${
         large ? "col-span-2" : ""
       }`}
     >
       <span className="truncate text-sm font-semibold">{note.title}</span>
       {note.content && (
-        <span className="line-clamp-3 text-xs text-neutral-500">
+        <span className="line-clamp-3 text-xs text-muted-foreground">
           {excerpt(note.content)}
         </span>
       )}
-      <span className="mt-auto pt-1 text-[11px] text-neutral-400">
+      <span className="mt-auto pt-1 text-[11px] text-muted-foreground">
         {new Date(note.updated_at * 1000).toLocaleDateString()}
       </span>
     </button>
@@ -52,10 +52,10 @@ function NoteRow({ note }: { note: Note }) {
     <button
       type="button"
       onClick={() => openNote(note.id)}
-      className="flex w-full items-center gap-3 rounded-md border border-neutral-300 bg-white px-3 py-2 text-left text-sm hover:border-neutral-500 dark:border-neutral-700 dark:bg-neutral-900"
+      className="flex w-full items-center gap-3 rounded-md border border-border bg-card px-3 py-2 text-left text-sm hover:border-foreground/40"
     >
       <span className="min-w-0 flex-1 truncate font-medium">{note.title}</span>
-      <span className="shrink-0 text-xs text-neutral-400">
+      <span className="shrink-0 text-xs text-muted-foreground">
         {new Date(note.updated_at * 1000).toLocaleDateString()}
       </span>
     </button>
@@ -85,8 +85,6 @@ export function NotesView() {
 
   const base = searching ? (searchResults ?? []) : (notes ?? []);
 
-  // Tag filtering needs each note's tags, which live on the detail query.
-  // These share the detail cache, so opening a note afterwards is instant.
   const tagDetails = useQueries({
     queries: (tagFilterId ? base : []).map((note) => ({
       queryKey: ["note-detail", note.id],
@@ -129,8 +127,8 @@ export function NotesView() {
   return (
     <div className="flex h-full flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex min-w-48 flex-1 items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2 py-1.5 dark:border-neutral-700 dark:bg-neutral-900">
-          <Search size={14} className="shrink-0 text-neutral-400" />
+        <div className="flex min-w-48 flex-1 items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1.5">
+          <Search size={14} className="shrink-0 text-muted-foreground" />
           <input
             value={searchText}
             placeholder="Search notes…"
@@ -142,7 +140,7 @@ export function NotesView() {
               type="button"
               aria-label="Clear search"
               onClick={() => setSearchText("")}
-              className="rounded p-0.5 text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+              className="rounded p-0.5 text-muted-foreground hover:bg-muted"
             >
               <X size={13} />
             </button>
@@ -160,12 +158,12 @@ export function NotesView() {
           className="w-40"
         />
 
-        <div className="flex rounded-md border border-neutral-300 dark:border-neutral-700">
+        <div className="flex rounded-md border border-border">
           <button
             type="button"
             title="Bento grid"
             onClick={() => setViewMode("bento")}
-            className={`rounded-l-md p-1.5 ${viewMode === "bento" ? "bg-neutral-200 dark:bg-neutral-700" : ""}`}
+            className={`rounded-l-md p-1.5 ${viewMode === "bento" ? "bg-muted" : ""}`}
           >
             <LayoutGrid size={15} />
           </button>
@@ -173,7 +171,7 @@ export function NotesView() {
             type="button"
             title="List"
             onClick={() => setViewMode("list")}
-            className={`rounded-r-md p-1.5 ${viewMode === "list" ? "bg-neutral-200 dark:bg-neutral-700" : ""}`}
+            className={`rounded-r-md p-1.5 ${viewMode === "list" ? "bg-muted" : ""}`}
           >
             <List size={15} />
           </button>
@@ -182,7 +180,7 @@ export function NotesView() {
         <button
           type="button"
           onClick={() => void handleNewNote()}
-          className="flex items-center gap-1.5 rounded-md bg-neutral-900 px-3 py-1.5 text-sm text-white dark:bg-white dark:text-neutral-900"
+          className="flex items-center gap-1.5 rounded-md bg-foreground px-3 py-1.5 text-sm text-background"
         >
           <Plus size={15} />
           New note
@@ -191,26 +189,26 @@ export function NotesView() {
 
       {createError && <p className="text-sm text-red-600">{createError}</p>}
       {(loading || tagFiltering) && (
-        <p className="text-sm text-neutral-500">Loading notes…</p>
+        <p className="text-sm text-muted-foreground">Loading notes…</p>
       )}
       {error && !searching && (
         <p className="text-sm text-red-600">{errorMessage(error)}</p>
       )}
 
       {!loading && !tagFiltering && shown.length === 0 && (
-        <p className="rounded-md border border-dashed border-neutral-300 p-6 text-center text-sm text-neutral-500 dark:border-neutral-700">
+        <p className="rounded-md border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
           No notes here yet. Create one to get started.
         </p>
       )}
 
       {viewMode === "bento" ? (
-        <div className="grid grid-cols-2 gap-2 overflow-y-auto pb-2 xl:grid-cols-3">
+        <div className="grid grid-cols-2 gap-2 overflow-y-auto pb-2 pr-2 thin-scroll xl:grid-cols-3">
           {shown.map((note) => (
             <NoteCard key={note.id} note={note} />
           ))}
         </div>
       ) : (
-        <div className="flex flex-col gap-1.5 overflow-y-auto pb-2">
+        <div className="flex flex-col gap-1.5 overflow-y-auto pb-2 pr-2 thin-scroll">
           {shown.map((note) => (
             <NoteRow key={note.id} note={note} />
           ))}
