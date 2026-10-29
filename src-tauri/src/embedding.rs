@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use el_core::{AppError, AppResult, EmbeddingModelInfo};
 use el_linking::Embedder;
-use serde_json::json;
+use serde_json::{json, Value};
 use tauri::AppHandle;
 use tauri_specta::Event as _;
 
@@ -61,30 +61,61 @@ impl Embedder for SidecarEmbedder {
     }
 
     async fn embed(&self, texts: &[String], model: &str) -> AppResult<Vec<Vec<f32>>> {
+        if texts.is_empty() {
+            return Ok(Vec::new());
+        }
         let value = self
             .sidecar
             .call("embed.texts", json!({ "texts": texts, "model": model }))
             .await?;
-        let embeddings = value
-            .get("embeddings")
-            .and_then(|embeddings| embeddings.as_array())
-            .ok_or_else(|| {
-                AppError::Internal("embed.texts response is missing embeddings".to_string())
-            })?;
-        let mut out = Vec::with_capacity(embeddings.len());
-        for vector in embeddings {
-            let values = vector.as_array().ok_or_else(|| {
-                AppError::Internal("embed.texts returned a non-array vector".to_string())
-            })?;
-            out.push(
-                values
-                    .iter()
-                    .map(|value| value.as_f64().unwrap_or(0.0) as f32)
-                    .collect(),
-            );
-        }
-        Ok(out)
+        parse_embeddings(texts.len(), &value)
     }
+}
+
+/// Decodes an `embed.texts` response and enforces one vector per input.
+///
+/// The sidecar drops blank and null entries before they reach the fastembed
+/// tokenizer, which raises `TextEncodeInputError` on empty input. A short
+/// response is therefore expected only when a caller passed blank text; it is
+/// rejected here because accepting it would pair vectors with the wrong
+/// documents. `indices` must be the identity mapping for the same reason.
+fn parse_embeddings(expected: usize, value: &Value) -> AppResult<Vec<Vec<f32>>> {
+    let embeddings = value
+        .get("embeddings")
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            AppError::Internal("embed.texts response is missing embeddings".to_string())
+        })?;
+    let mut out = Vec::with_capacity(embeddings.len());
+    for vector in embeddings {
+        let values = vector.as_array().ok_or_else(|| {
+            AppError::Internal("embed.texts returned a non-array vector".to_string())
+        })?;
+        out.push(
+            values
+                .iter()
+                .map(|value| value.as_f64().unwrap_or(0.0) as f32)
+                .collect(),
+        );
+    }
+    if out.len() != expected {
+        return Err(AppError::Sidecar(format!(
+            "embed.texts kept {} of {expected} inputs; blank text cannot be embedded",
+            out.len()
+        )));
+    }
+    if let Some(indices) = value.get("indices").and_then(Value::as_array) {
+        let aligned = indices
+            .iter()
+            .enumerate()
+            .all(|(position, index)| index.as_u64() == Some(position as u64));
+        if !aligned {
+            return Err(AppError::Internal(
+                "embed.texts returned vectors out of input order".to_string(),
+            ));
+        }
+    }
+    Ok(out)
 }
 
 /// Reads the active embedding model from settings, defaulting to MiniLM.
@@ -169,5 +200,52 @@ fn emit_suggestions(app: &AppHandle, state: &AppState, note_id: &str, model: &st
         Err(err) => {
             tracing::warn!(note = %note_id, error = %err, "embed worker failed to suggest links")
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_embeddings;
+    use el_core::AppError;
+    use serde_json::json;
+
+    #[test]
+    fn parse_embeddings_accepts_aligned_response() {
+        let response = json!({
+            "embeddings": [[1.0, 0.0], [0.0, 1.0]],
+            "indices": [0, 1],
+        });
+        let vectors = parse_embeddings(2, &response).unwrap();
+        assert_eq!(vectors, vec![vec![1.0, 0.0], vec![0.0, 1.0]]);
+    }
+
+    #[test]
+    fn parse_embeddings_accepts_legacy_response_without_indices() {
+        let response = json!({ "embeddings": [[1.0, 2.0]] });
+        let vectors = parse_embeddings(1, &response).unwrap();
+        assert_eq!(vectors, vec![vec![1.0, 2.0]]);
+    }
+
+    #[test]
+    fn parse_embeddings_rejects_short_response() {
+        let response = json!({ "embeddings": [[1.0]], "indices": [0] });
+        let err = parse_embeddings(2, &response).unwrap_err();
+        assert!(matches!(err, AppError::Sidecar(message) if message.contains("kept 1 of 2")));
+    }
+
+    #[test]
+    fn parse_embeddings_rejects_misaligned_indices() {
+        let response = json!({ "embeddings": [[1.0], [2.0]], "indices": [1, 0] });
+        let err = parse_embeddings(2, &response).unwrap_err();
+        assert!(
+            matches!(err, AppError::Internal(message) if message.contains("out of input order"))
+        );
+    }
+
+    #[test]
+    fn parse_embeddings_rejects_non_array_vector() {
+        let response = json!({ "embeddings": [null] });
+        let err = parse_embeddings(1, &response).unwrap_err();
+        assert!(matches!(err, AppError::Internal(message) if message.contains("non-array vector")));
     }
 }

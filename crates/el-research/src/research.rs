@@ -199,8 +199,8 @@ pub async fn llm_call<P: LlmProvider>(
         el_db::repo::research::add_tokens(
             &mut conn,
             session_id,
-            provider.name(),
-            model,
+            &response.provider,
+            &response.model,
             response.usage.tokens_in,
             response.usage.tokens_out,
         )?;

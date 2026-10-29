@@ -20,9 +20,9 @@ use tauri::{Emitter, Manager};
 use tauri_specta::{collect_commands, collect_events, Builder, Event as SpectaEvent};
 
 use commands::{
-    analytics as analytics_commands, cache, compression as compression_commands,
+    analytics as analytics_commands, audio, cache, compression as compression_commands,
     embedding as embedding_commands, folders, library, links, memory as memory_commands, notes,
-    projects, research, secrets, settings, skills, synthesis, tags,
+    projects, provider as provider_commands, research, secrets, settings, skills, synthesis, tags,
 };
 
 /// The full IPC surface, exposed for the bindings export test.
@@ -104,6 +104,14 @@ pub fn specta_builder() -> Builder<tauri::Wry> {
             secrets::api_key_status,
             secrets::api_key_test,
             secrets::token_usage_summary,
+            provider_commands::llm_catalog,
+            provider_commands::llm_config_get,
+            provider_commands::llm_config_save,
+            provider_commands::llm_models_sync,
+            audio::tts_config_get,
+            audio::tts_config_save,
+            audio::tts_voices,
+            audio::tts_synthesize,
             cache::cache_stats,
             cache::cache_clear,
             research::research_start,
@@ -236,6 +244,9 @@ pub fn run() {
 
             if let Err(err) = secrets::migrate_legacy_fallbacks(&app_state) {
                 tracing::warn!("legacy API key cleanup failed: {err}");
+            }
+            if let Err(err) = provider_commands::migrate_config(&app_state) {
+                tracing::warn!("LLM settings migration failed: {err}");
             }
 
             app.manage(app_state.clone());

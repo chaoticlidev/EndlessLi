@@ -187,7 +187,12 @@ export const commands = {
 	apiKeySet: (provider: string, key: string) => typedError<null, AppError>(__TAURI_INVOKE("api_key_set", { provider, key })),
 	/**  Removes a provider API key. Succeeds when none was stored. */
 	apiKeyDelete: (provider: string) => typedError<null, AppError>(__TAURI_INVOKE("api_key_delete", { provider })),
-	/**  Reports which providers have a key stored, without revealing keys. */
+	/**
+	 *  Reports which providers have a key stored, without revealing keys.
+	 * 
+	 *  Includes user-defined LLM and TTS endpoints so the Settings UI can show
+	 *  per-endpoint key state.
+	 */
 	apiKeyStatus: () => typedError<ProviderKeyStatus[], AppError>(__TAURI_INVOKE("api_key_status")),
 	/**
 	 *  Runs a tiny self-test prompt end to end: budget check, one completion,
@@ -196,6 +201,26 @@ export const commands = {
 	apiKeyTest: (provider: string, model: string | null) => typedError<TestOutcome, AppError>(__TAURI_INVOKE("api_key_test", { provider, model })),
 	/**  Summarizes token usage (rolling 24h / 30d) with limits and warnings. */
 	tokenUsageSummary: () => typedError<TokenSummary, AppError>(__TAURI_INVOKE("token_usage_summary")),
+	/**  Every built-in provider, for the Settings picker. */
+	llmCatalog: () => typedError<ProviderDescriptor[], AppError>(__TAURI_INVOKE("llm_catalog")),
+	/**  Reads the model configuration, translating legacy single-provider settings. */
+	llmConfigGet: () => typedError<LlmConfig, AppError>(__TAURI_INVOKE("llm_config_get")),
+	/**  Validates and persists the model configuration. */
+	llmConfigSave: (config: LlmConfig) => typedError<LlmConfig, AppError>(__TAURI_INVOKE("llm_config_save", { config })),
+	/**
+	 *  Fetches a provider's live model list from `/models` and merges it with the
+	 *  stored list. The result is returned only; Settings saves it with the rest of
+	 *  the configuration so a sync cannot silently overwrite unsaved edits.
+	 */
+	llmModelsSync: (provider: string) => typedError<string[], AppError>(__TAURI_INVOKE("llm_models_sync", { provider })),
+	/**  Reads the audio configuration. */
+	ttsConfigGet: () => typedError<TtsConfig, AppError>(__TAURI_INVOKE("tts_config_get")),
+	/**  Validates and persists the audio configuration. */
+	ttsConfigSave: (config: TtsConfig) => typedError<TtsConfig, AppError>(__TAURI_INVOKE("tts_config_save", { config })),
+	/**  Lists voices for an engine, using unsaved path overrides when supplied. */
+	ttsVoices: (engine: string, customProviderId: string | null, piperVoicesDir: string | null, kokoroVoicesPath: string | null) => typedError<TtsVoice[], AppError>(__TAURI_INVOKE("tts_voices", { engine, customProviderId, piperVoicesDir, kokoroVoicesPath })),
+	/**  Synthesizes speech and returns a data URL for playback. */
+	ttsSynthesize: (request: TtsSpeakRequest) => typedError<TtsSample, AppError>(__TAURI_INVOKE("tts_synthesize", { request })),
 	/**  Reports entry count and total bytes. */
 	cacheStats: () => typedError<CacheStats, AppError>(__TAURI_INVOKE("cache_stats")),
 	/**  Clears the whole cache, or one entry type, and returns the fresh stats. */
@@ -382,6 +407,12 @@ export type CacheStats = {
 	bytes: number,
 };
 
+/**  One entry in the fallback chain. */
+export type ChainEntry = {
+	provider: string,
+	model: string,
+};
+
 /**
  *  Token counts for one call. `estimated` is true when the server reported
  *  no usage and the client counted instead.
@@ -401,6 +432,15 @@ export type CompressionOutput = {
 	title: string,
 	content: string,
 	sources: string[],
+};
+
+/**  A user-defined OpenAI-compatible endpoint. */
+export type CustomProvider = {
+	/**  `custom.<slug>`; also the keychain account name. */
+	id: string,
+	display_name: string,
+	base_url: string,
+	models: string[],
 };
 
 /**
@@ -494,6 +534,14 @@ export type LinkedNote = {
 export type LinkingSuggestionsEvent = {
 	note_id: string,
 	candidates: LinkCandidate[],
+};
+
+/**  Everything Settings needs to render and edit the model configuration. */
+export type LlmConfig = {
+	chain: ChainEntry[],
+	custom_providers: CustomProvider[],
+	provider_models: { [key in string]: string[] },
+	base_urls: { [key in string]: string },
 };
 
 /**  A durable memory: global, or scoped to one project. */
@@ -625,6 +673,20 @@ export type Project = {
 	encrypted: boolean,
 	archived: boolean,
 	created_at: number,
+};
+
+/**  Provider description returned through IPC. */
+export type ProviderDescriptor = {
+	id: string,
+	label: string,
+	wire: WireFormat,
+	default_base_url: string,
+	base_url_editable: boolean,
+	default_model: string,
+	models: string[],
+	requires_key: boolean,
+	docs_url: string,
+	base_url_hint: string,
 };
 
 /**  Per-provider key presence for the Settings UI. */
@@ -852,6 +914,10 @@ export type TestOutcome = {
 	tokens_in: number,
 	tokens_out: number,
 	estimated: boolean,
+	/**  Provider that answered (may differ from the one tested after fallback). */
+	provider: string,
+	/**  Model that answered. */
+	model: string,
 	budget_warning: string | null,
 };
 
@@ -864,6 +930,63 @@ export type TokenSummary = {
 	daily_limit: number,
 	monthly_limit: number,
 	budget_warning: string | null,
+};
+
+/**  Audio settings, persisted as one JSON blob under `audio.config`. */
+export type TtsConfig = {
+	/**  `kokoro`, `piper`, or `openai`. */
+	engine: string,
+	/**  Selected voice id for the active engine. */
+	voice: string,
+	kokoro_model_path: string,
+	kokoro_voices_path: string,
+	piper_path: string,
+	piper_voices_dir: string,
+	custom_providers: TtsCustomProvider[],
+	/**  Selected custom endpoint id (empty when none is chosen). */
+	custom_provider_id: string,
+	custom_model: string,
+	custom_voice: string,
+};
+
+/**  One user-defined OpenAI Speech-compatible endpoint. */
+export type TtsCustomProvider = {
+	/**  `tts.<slug>`; also the keychain account name. */
+	id: string,
+	display_name: string,
+	base_url: string,
+	models: string[],
+	voices: string[],
+};
+
+/**  A synthesized sample plus enough metadata for the UI to show what played. */
+export type TtsSample = {
+	/**  `data:<mime>;base64,<payload>` for direct playback. */
+	data_url: string,
+	mime: string,
+	engine: string,
+	voice: string,
+	bytes: number,
+};
+
+/**  Optional overrides for previewing settings that have not been saved yet. */
+export type TtsSpeakRequest = {
+	engine: string | null,
+	voice: string | null,
+	text: string | null,
+	custom_provider_id: string | null,
+	custom_model: string | null,
+	custom_base_url: string | null,
+	kokoro_model_path: string | null,
+	kokoro_voices_path: string | null,
+	piper_path: string | null,
+	piper_voices_dir: string | null,
+};
+
+/**  One selectable voice. */
+export type TtsVoice = {
+	id: string,
+	label: string,
 };
 
 /**
@@ -903,6 +1026,15 @@ export type UpdateProject = {
 	color: string | null,
 	system_prompt: string | null,
 };
+
+/**  HTTP dialect a provider speaks. */
+export type WireFormat = 
+/**  OpenAI `chat/completions` with SSE streaming. */
+"openAi" | 
+/**  Anthropic Messages with SSE event names. */
+"anthropic" | 
+/**  GitHub's Copilot endpoint: OpenAI-compatible after a token exchange. */
+"copilot";
 
 /* Tauri Specta runtime */
 async function typedError<T, E>(result: Promise<T>): Promise<{ status: "ok"; data: T } | { status: "error"; error: E }> {

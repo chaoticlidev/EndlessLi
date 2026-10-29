@@ -39,6 +39,7 @@ fn check_key(key: &str) -> AppResult<()> {
         "budget.",
         "memory.",
         "research.",
+        "audio.",
     ];
     if key.trim().is_empty() {
         return Err(AppError::InvalidInput(

@@ -80,7 +80,9 @@ Most AI tools are cloud-only, lock your data behind a subscription, and require 
 
 * **[Architecture](./ARCHITECTURE.md):** System design, database schema, and technical decisions.
 * **[Security](./SECURITY.md):** How keys are stored, the script sandbox, and vulnerability reporting.
-* **User Guide:** *(Coming soon. The current docs are being updated for v1.0).*
+* **[User Guide](./docs/user-guide.md):** Orientation on the workspaces, shortcuts, and data storage.
+* **[Getting Started](./docs/user-guide/getting-started.md):** Installation and your first project.
+* **[Troubleshooting](./docs/user-guide/troubleshooting.md):** Fixes for the sidecar, API keys, and scripts.
 
 ## Configuration
 

@@ -17,7 +17,7 @@ use tauri_plugin_shell::ShellExt;
 pub const MAX_RESTARTS: u32 = 1000;
 pub const RESTART_WINDOW_SECS: u64 = 300;
 pub const CALL_TIMEOUT_SECS: u64 = 1000;
-pub const HEALTH_TIMEOUT_SECS: u64 = 60;
+pub const HEALTH_TIMEOUT_SECS: u64 = 1200;
 /// Delay before restarting a crashed sidecar to let the OS reclaim the old process.
 const CRASH_BACKOFF_MS: u64 = 2000;
 
@@ -493,10 +493,22 @@ fn handle_stdout_line(pending_owner: &Arc<ManagerInner>, line: &str) {
 }
 
 fn resolve_launch() -> Result<LaunchPlan, String> {
+    // Check for the explicit env var first
     #[cfg(debug_assertions)]
     if let Ok(dir) = std::env::var("ENDLESSLI_SIDECAR_DIR") {
         return resolve_dev_dir(Path::new(&dir));
     }
+
+    // Check for the dev folder BEFORE the packaged binary.
+    for base in [std::env::current_dir().map_err(|err| format!("read cwd: {err}"))?] {
+        for candidate in [base.join("sidecar"), base.join("../sidecar")] {
+            if candidate.join("endlessli_sidecar").is_dir() {
+                return resolve_dev_dir(&candidate);
+            }
+        }
+    }
+
+    // Fallback to the packaged binary (for release builds)
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
             for name in ["endlessli-sidecar.exe", "endlessli-sidecar"] {
@@ -507,13 +519,7 @@ fn resolve_launch() -> Result<LaunchPlan, String> {
             }
         }
     }
-    for base in [std::env::current_dir().map_err(|err| format!("read cwd: {err}"))?] {
-        for candidate in [base.join("sidecar"), base.join("../sidecar")] {
-            if candidate.join("endlessli_sidecar").is_dir() {
-                return resolve_dev_dir(&candidate);
-            }
-        }
-    }
+
     Err("sidecar not found".to_string())
 }
 

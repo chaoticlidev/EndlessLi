@@ -7,6 +7,7 @@
 //! module list; nothing on the frontend is hand-copied from Rust.
 
 pub mod analytics;
+pub mod audio;
 pub mod cache;
 pub mod compression;
 pub mod embedding;

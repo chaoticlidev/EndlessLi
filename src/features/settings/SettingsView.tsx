@@ -14,7 +14,7 @@ import {
   RefreshCw,
   Sparkles,
   Search,
-  Trash2,
+  Volume2,
   Wallet,
   X,
   ArrowUp,
@@ -27,9 +27,10 @@ import {
   useAnalyticsStatus,
   useCacheStats,
   useClearCache,
-  useDeleteKey,
   useEmbeddingStatus,
   useKeyStatus,
+  useLlmCatalog,
+  useLlmConfig,
   useMemoryEnabled,
   useMemoryList,
   useForgottenMemories,
@@ -48,14 +49,10 @@ import {
   useTokenSummary,
 } from "../../ipc/queries";
 import { Select } from "../../components/Select";
-import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { useUi } from "../../stores/ui";
-
-const LLM_PROVIDERS = [
-  { id: "openai", label: "OpenAI", defaultModel: "gpt-4o-mini" },
-  { id: "anthropic", label: "Anthropic", defaultModel: "claude-sonnet-4-5" },
-  { id: "deepseek", label: "DeepSeek", defaultModel: "deepseek-chat" },
-] as const;
+import { ProviderKeyRow, Section, SettingField } from "./primitives";
+import { AudioSection } from "./AudioSection";
+import { ModelsSection } from "./ModelsSection";
 
 /// Search backends available for the fallback chain. `ddgs` is always present
 /// (keyless). You.com falls back from its API (Python sidecar) to an MCP call
@@ -73,6 +70,7 @@ const SEARCH_PROVIDERS: SearchProvider[] = [
   { id: "ddg_lite", label: "DuckDuckGo Lite", requiresKey: false },
   { id: "ddg_html", label: "DuckDuckGo HTML", requiresKey: false },
   { id: "searxng", label: "SearXNG (self-hosted)", requiresKey: false, needsUrl: true },
+  { id: "brave", label: "Brave Search", requiresKey: true, keyId: "brave" },
   { id: "firecrawl", label: "Firecrawl", requiresKey: true, keyId: "firecrawl" },
   { id: "keenable", label: "Keenable", requiresKey: true, keyId: "keenable" },
   { id: "exa", label: "Exa", requiresKey: true, keyId: "exa" },
@@ -87,7 +85,7 @@ const SEARCH_PROVIDERS: SearchProvider[] = [
 
 const DEFAULT_SEARCH_PRIORITY: string[] = [
   "ddgs", "firecrawl", "keenable", "exa", "tavily",
-  "searxng", "parallel", "anysearch", "perplexity",
+  "searxng", "brave", "parallel", "anysearch", "perplexity",
   "serpbase", "bing", "ddg_lite", "ddg_html", "you",
 ];
 
@@ -108,272 +106,101 @@ const EMBEDDING_MODELS = [
   },
 ] as const;
 
-function Section({ title, children }: { title?: string; children: ReactNode }) {
-  return (
-    <section className="flex flex-col gap-2 rounded-lg border border-border bg-background p-4">
-      {title && <h2 className="text-sm font-semibold">{title}</h2>}
-      {children}
-    </section>
-  );
-}
 
-function SettingField({
-  settingKey,
-  label,
-  hint,
-  placeholder,
-}: {
-  settingKey: string;
-  label: string;
-  hint?: string;
-  placeholder?: string;
-}) {
-  const { data: stored } = useSetting(settingKey);
-  const setSetting = useSetSetting();
-  const [draft, setDraft] = useState<string | null>(null);
-  const [status, setStatus] = useState<string | null>(null);
-
-  const value = draft ?? stored ?? "";
-
-  async function save() {
-    setStatus(null);
-    try {
-      await setSetting.mutateAsync({
-        key: settingKey,
-        value: draft ?? stored ?? "",
-      });
-      setDraft(null);
-      setStatus("Saved");
-    } catch (err) {
-      setStatus(errorMessage(err));
-    }
-  }
-
-  return (
-    <label className="flex flex-col gap-1 text-sm">
-      <span className="font-medium">{label}</span>
-      <span className="flex gap-1.5">
-        <input
-          value={value}
-          placeholder={placeholder}
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") void save();
-          }}
-          className="w-full rounded-md border border-border bg-transparent px-2 py-1 text-sm outline-none"
-        />
-        <button
-          type="button"
-          onClick={() => void save()}
-          disabled={draft === null}
-          className="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs disabled:opacity-40"
-        >
-          Save
-        </button>
-      </span>
-      {hint && <span className="text-xs text-neutral-500">{hint}</span>}
-      {status && (
-        <span
-          className={`text-xs ${status === "Saved" ? "text-green-700 dark:text-green-400" : "text-red-600"}`}
-        >
-          {status}
-        </span>
-      )}
-    </label>
-  );
-}
-
+/** LLM provider keys. Model selection lives in the Models tab. */
 function ProviderKeys() {
-  const { data: status, error: statusError } = useKeyStatus();
-  const setKey = useSetKey();
-  const deleteKey = useDeleteKey();
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const [message, setMessage] = useState<Record<string, string>>({});
+  const { data: catalog = [] } = useLlmCatalog();
+  const { data: config } = useLlmConfig();
   const [testing, setTesting] = useState<string | null>(null);
-  const [pendingDelete, setPendingDelete] = useState<{
-    id: string;
-    label: string;
-  } | null>(null);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [message, setMessage] = useState<Record<string, string>>({});
   const [outcome, setOutcome] = useState<{
     provider: string;
     result: TestOutcome;
   } | null>(null);
 
-  async function save(provider: string) {
-    const key = (drafts[provider] ?? "").trim();
-    if (!key) return;
-    try {
-      await setKey.mutateAsync({ provider, key });
-      setDrafts((prev) => ({ ...prev, [provider]: "" }));
-      setMessage((prev) => ({ ...prev, [provider]: "Saved to keychain" }));
-    } catch (err) {
-      setMessage((prev) => ({ ...prev, [provider]: errorMessage(err) }));
-    }
-  }
+  const providers = [
+    ...catalog.map((entry) => ({ id: entry.id, label: entry.label })),
+    ...(config?.custom_providers ?? []).map((custom) => ({
+      id: custom.id,
+      label: custom.display_name,
+    })),
+  ];
 
   async function test(provider: string) {
     setTesting(provider);
     setOutcome(null);
+    setMessage((current) => ({ ...current, [provider]: "" }));
     try {
       const result = await commands.apiKeyTest(provider, null);
       if (result.status === "ok") {
         setOutcome({ provider, result: result.data });
-        setMessage((prev) => ({ ...prev, [provider]: "" }));
       } else {
-        setMessage((prev) => ({ ...prev, [provider]: result.error.message }));
+        setMessage((current) => ({
+          ...current,
+          [provider]: result.error.message,
+        }));
       }
     } catch (err) {
-      setMessage((prev) => ({ ...prev, [provider]: errorMessage(err) }));
+      setMessage((current) => ({
+        ...current,
+        [provider]: errorMessage(err),
+      }));
     } finally {
       setTesting(null);
     }
   }
 
-  async function confirmDelete() {
-    if (!pendingDelete) return;
-    setDeleteError(null);
-    try {
-      await deleteKey.mutateAsync(pendingDelete.id);
-      setPendingDelete(null);
-    } catch (err) {
-      setDeleteError(errorMessage(err));
-    }
-  }
-
   return (
     <div className="flex flex-col gap-3">
-      {statusError && (
-        <p className="rounded-md border border-amber-400 p-2 text-xs text-amber-700 dark:text-amber-400">
-          Could not read the keychain: {errorMessage(statusError)}. Stored keys
-          may still work — this only affects the status display.
-        </p>
-      )}
-      {LLM_PROVIDERS.map((provider) => {
-        const configured = status?.find(
-          (entry) => entry.provider === provider.id,
-        )?.configured;
-        return (
-          <div
-            key={provider.id}
-            className="flex flex-col gap-1.5 rounded-md border border-neutral-200 p-2.5 dark:border-neutral-700"
-          >
-            <div className="flex items-center gap-2 text-sm">
-              <KeyRound size={14} className="text-neutral-400" />
-              <span className="font-medium">{provider.label}</span>
-              <span
-                className={`flex items-center gap-1 text-xs ${configured ? "text-green-700 dark:text-green-400" : "text-neutral-400"}`}
-              >
-                {configured && <Check size={12} />}
-                {configured ? "Key stored" : "No key"}
-              </span>
-            </div>
-            <div className="flex gap-1.5">
-              <input
-                type="password"
-                value={drafts[provider.id] ?? ""}
-                placeholder={configured ? "Replace key…" : "Paste API key…"}
-                autoComplete="off"
-                onChange={(event) =>
-                  setDrafts((prev) => ({
-                    ...prev,
-                    [provider.id]: event.target.value,
-                  }))
-                }
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") void save(provider.id);
-                }}
-                className="w-full rounded-md border border-border bg-transparent px-2 py-1 text-sm outline-none"
-              />
-              <button
-                type="button"
-                onClick={() => void save(provider.id)}
-                className="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs"
-              >
-                Save
-              </button>
-              {configured && (
-                <>
-                  <button
-                    type="button"
-                    title={`Delete ${provider.label} key`}
-                    onClick={() => {
-                      setDeleteError(null);
-                      setPendingDelete({
-                        id: provider.id,
-                        label: provider.label,
-                      });
-                    }}
-                    className="shrink-0 rounded-md border border-border px-2 py-1"
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void test(provider.id)}
-                    disabled={testing !== null}
-                    className="flex shrink-0 items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs disabled:opacity-40"
-                  >
-                    {testing === provider.id ? (
-                      <Loader2 size={13} className="animate-spin" />
-                    ) : (
-                      <FlaskConical size={13} />
-                    )}
-                    Test
-                  </button>
-                </>
-              )}
-            </div>
-            {message[provider.id] && (
-              <p className="text-xs text-red-600">{message[provider.id]}</p>
-            )}
-            {outcome?.provider === provider.id && (
-              <div className="rounded-md bg-neutral-100 p-2 text-xs dark:bg-neutral-800">
-                <p>
-                  <span className="font-medium">Reply:</span>{" "}
-                  {outcome.result.text || "(empty)"}
-                </p>
-                <p className="text-neutral-500">
-                  {outcome.result.tokens_in} in / {outcome.result.tokens_out}{" "}
-                  out tokens
-                  {outcome.result.estimated ? " (estimated)" : ""} · usage
-                  logged
-                  {outcome.result.budget_warning
-                    ? ` · ${outcome.result.budget_warning}`
-                    : ""}
-                </p>
-              </div>
-            )}
-          </div>
-        );
-      })}
       <p className="text-xs text-neutral-500">
         Keys live in the OS keychain and are never shown again after saving.
+        Each provider can hold several models; manage the fallback chain in the
+        Models tab.
       </p>
-
-      {pendingDelete && (
-        <ConfirmDialog
-          title={`Delete ${pendingDelete.label} key`}
-          description={
-            <>
-              <p>
-                Research will stop working until a new {pendingDelete.label}{" "}
-                key is saved.
-              </p>
-              {deleteError && (
-                <p className="mt-2 text-xs text-red-600">{deleteError}</p>
+      {providers.map((provider) => (
+        <div
+          key={provider.id}
+          className="flex flex-col gap-1.5 rounded-md border border-neutral-200 p-2.5 dark:border-neutral-700"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm font-medium">{provider.label}</span>
+            <button
+              type="button"
+              onClick={() => void test(provider.id)}
+              disabled={testing !== null}
+              className="flex shrink-0 items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs disabled:opacity-40"
+            >
+              {testing === provider.id ? (
+                <Loader2 size={13} className="animate-spin" />
+              ) : (
+                <FlaskConical size={13} />
               )}
-            </>
-          }
-          busy={deleteKey.isPending}
-          onConfirm={() => void confirmDelete()}
-          onCancel={() => {
-            if (deleteKey.isPending) return;
-            setPendingDelete(null);
-            setDeleteError(null);
-          }}
-        />
-      )}
+              Test
+            </button>
+          </div>
+          <ProviderKeyRow provider={provider.id} label={provider.label} />
+          {message[provider.id] && (
+            <p className="text-xs text-red-600">{message[provider.id]}</p>
+          )}
+          {outcome && outcome.provider === provider.id && (
+            <div className="rounded-md bg-neutral-100 p-2 text-xs dark:bg-neutral-800">
+              <p>
+                <span className="font-medium">Reply:</span>{" "}
+                {outcome.result.text || "(empty)"}
+              </p>
+              <p className="text-neutral-500">
+                {outcome.result.provider} · {outcome.result.model} ·{" "}
+                {outcome.result.tokens_in} in / {outcome.result.tokens_out} out
+                tokens
+                {outcome.result.estimated ? " (estimated)" : ""} · usage logged
+                {outcome.result.budget_warning
+                  ? ` · ${outcome.result.budget_warning}`
+                  : ""}
+              </p>
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
@@ -721,8 +548,8 @@ function CacheManager() {
     <div className="flex flex-col gap-2 text-sm">
       <p className="text-xs text-neutral-500">
         {stats
-          ? `${stats.entries} entries · ${formatBytes(stats.bytes)}`
-          : "Loading usage…"}
+          ? `${stats.entries} entries - ${formatBytes(stats.bytes)}`
+          : "Loading usageâ€¦"}
       </p>
       <div className="flex flex-wrap gap-1.5">
         <button
@@ -808,7 +635,7 @@ function EmbeddingPanel() {
       {status && (
         <div className="flex flex-col gap-1 text-xs text-neutral-500">
           <p>
-            {status.model} · {status.dim} dims
+            {status.model} - {status.dim} dims
           </p>
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-700">
             <div
@@ -1086,8 +913,9 @@ function MemoryPanel() {
 }
 
 type SettingsTabId =
-  | "language-model"
+  | "models"
   | "api-keys"
+  | "audio"
   | "embedding"
   | "analytics"
   | "cache"
@@ -1097,8 +925,9 @@ type SettingsTabId =
 
 const SETTINGS_TABS: { id: SettingsTabId; label: string; icon: typeof Cog }[] =
   [
-    { id: "language-model", label: "Language Model", icon: Sparkles },
+    { id: "models", label: "Models", icon: Sparkles },
     { id: "api-keys", label: "API Keys", icon: KeyRound },
+    { id: "audio", label: "Audio", icon: Volume2 },
     { id: "embedding", label: "Embedding", icon: Database },
     { id: "analytics", label: "Analytics", icon: BarChart3 },
     { id: "cache", label: "Cache", icon: HardDrive },
@@ -1107,55 +936,13 @@ const SETTINGS_TABS: { id: SettingsTabId; label: string; icon: typeof Cog }[] =
     { id: "search", label: "Search", icon: Search },
   ];
 
-/** Provider, model, and optional OpenAI-compatible endpoint. */
-function LanguageModelSection() {
-  const { data: provider } = useSetting("llm.provider");
-  const setSetting = useSetSetting();
-  const current = provider || "openai";
-
-  return (
-    <Section>
-      <div className="flex flex-col gap-1 text-sm">
-        <span className="font-medium">Provider</span>
-        <Select
-          ariaLabel="Provider"
-          value={current}
-          onChange={(value) => {
-            void setSetting.mutateAsync({
-              key: "llm.provider",
-              value,
-            });
-          }}
-          options={LLM_PROVIDERS.map((entry) => ({
-            value: entry.id,
-            label: entry.label,
-          }))}
-        />
-      </div>
-      <SettingField
-        settingKey="llm.model"
-        label="Model (blank uses the provider default)"
-        placeholder={
-          LLM_PROVIDERS.find((entry) => entry.id === current)?.defaultModel
-        }
-      />
-      {current === "openai" && (
-        <SettingField
-          settingKey="llm.base_url"
-          label="Custom endpoint (OpenAI-compatible servers)"
-          hint="Blank means api.openai.com. Points research and skills at any compatible server."
-          placeholder="https://api.openai.com/v1"
-        />
-      )}
-    </Section>
-  );
-}
-
 /** Renders only the section for the active settings tab. */
 function SettingsTabContent({ tab }: { tab: SettingsTabId }) {
   switch (tab) {
-    case "language-model":
-      return <LanguageModelSection />;
+    case "models":
+      return <ModelsSection />;
+    case "audio":
+      return <AudioSection />;
     case "api-keys":
       return <ProviderKeys />;
     case "embedding":
@@ -1164,7 +951,7 @@ function SettingsTabContent({ tab }: { tab: SettingsTabId }) {
           <EmbeddingPanel />
           <SettingField
             settingKey="linking.threshold"
-            label="Auto-link threshold (0–1)"
+            label="Auto-link threshold (0â€“1)"
             hint="Cosine similarity a suggested note must reach. 0.75 is strict for MiniLM-sized models; 0.5 surfaces more."
             placeholder="0.75"
           />
@@ -1203,7 +990,7 @@ export function SettingsModal() {
   const open = useUi((state) => state.settingsOpen);
   const setSettingsOpen = useUi((state) => state.setSettingsOpen);
   const [activeSettingsTab, setActiveSettingsTab] = useState<SettingsTabId>(
-    "language-model",
+    "models",
   );
 
   useEffect(() => {

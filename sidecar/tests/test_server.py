@@ -4,6 +4,7 @@ import io
 import json
 
 from endlessli_sidecar import server
+from endlessli_sidecar.search import SearchOutcome
 from endlessli_sidecar.server import dispatch, serve
 
 
@@ -18,7 +19,7 @@ def test_search_providers_lists_backends():
     response = dispatch({"jsonrpc": "2.0", "id": 2, "method": "search.providers", "params": {}})
     names = {entry["name"] for entry in response["result"]["providers"]}
     assert names == {
-        "ddgs", "ddg_lite", "ddg_html", "searxng",
+        "ddgs", "ddg_lite", "ddg_html", "searxng", "brave",
         "firecrawl", "keenable", "exa", "tavily",
         "serpbase", "bing", "parallel", "anysearch",
         "perplexity", "you",
@@ -37,7 +38,7 @@ def test_search_providers_lists_backends():
         if entry["requires_key"]
     }
     assert keyed == {
-        "firecrawl", "keenable", "exa", "tavily",
+        "brave", "firecrawl", "keenable", "exa", "tavily",
         "serpbase", "bing", "parallel", "anysearch",
         "perplexity", "you",
     }
@@ -66,3 +67,73 @@ def test_serve_handles_bad_json_and_eof():
     lines = [json.loads(line) for line in stdout.getvalue().splitlines()]
     assert lines[0]["error"]["code"] == server.PARSE_ERROR
     assert lines[1]["result"]["ok"] is True
+
+
+def test_search_query_forwards_credentials(monkeypatch):
+    """Every credential in the payload reaches the Python ProviderContext."""
+    captured = {}
+
+    def fake_search(query, max_results, providers, ctx):
+        captured["providers"] = providers
+        captured["ctx"] = ctx
+        return SearchOutcome(
+            provider="brave", results=[]
+        )
+
+    monkeypatch.setattr(server, "search_with_fallback", fake_search)
+    response = dispatch(
+        {
+            "jsonrpc": "2.0",
+            "id": 10,
+            "method": "search.query",
+            "params": {
+                "query": "fallback",
+                # provider_names is the alias older shells send.
+                "provider_names": ["brave", "searxng"],
+                "searxng_url": "https://search.test",
+                "brave_key": "brave-secret",
+                "tavily_key": "tavily-secret",
+                "you_key": "you-secret",
+                "safe_search": "strict",
+                "max_results": 3,
+            },
+        }
+    )
+    assert response["result"]["provider"] == "brave"
+    assert captured["providers"] == ["brave", "searxng"]
+    ctx = captured["ctx"]
+    assert ctx.searxng_url == "https://search.test"
+    assert ctx.brave_key == "brave-secret"
+    assert ctx.tavily_key == "tavily-secret"
+    assert ctx.you_key == "you-secret"
+    assert ctx.safe_search == "strict"
+
+
+def test_tts_methods_registered():
+    assert "tts.synthesize" in server.METHODS
+    assert "tts.voices" in server.METHODS
+
+
+def test_tts_rejects_unknown_engine():
+    response = dispatch(
+        {
+            "jsonrpc": "2.0",
+            "id": 11,
+            "method": "tts.synthesize",
+            "params": {"engine": "espeak", "text": "hello"},
+        }
+    )
+    assert response["error"]["code"] == server.INVALID_PARAMS
+
+
+def test_tts_rejects_blank_text():
+    response = dispatch(
+        {
+            "jsonrpc": "2.0",
+            "id": 12,
+            "method": "tts.synthesize",
+            "params": {"engine": "piper", "text": "   "},
+        }
+    )
+    assert response["error"]["code"] == server.INVALID_PARAMS
+

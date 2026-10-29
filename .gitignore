@@ -70,3 +70,4 @@ src-tauri/windows-test.manifest
 src-tauri/windows-app.manifest
 src-tauri/windows-app.rc
 .vscode
+sidecar/models/*.onnx

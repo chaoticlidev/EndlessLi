@@ -74,7 +74,7 @@ pub fn migrate_legacy_fallbacks(state: &AppState) -> AppResult<()> {
         let Some(value) = el_db::repo::cache::get_setting(&conn, &key)? else {
             continue;
         };
-        if value.trim().is_empty() || !el_security::secrets::KNOWN_PROVIDERS.contains(&provider) {
+        if value.trim().is_empty() || el_security::secrets::check_provider(provider).is_err() {
             el_db::repo::cache::delete_setting(&conn, &key)?;
             continue;
         }
@@ -118,16 +118,27 @@ pub fn api_key_delete(state: State<'_, AppState>, provider: String) -> AppResult
 }
 
 /// Reports which providers have a key stored, without revealing keys.
+///
+/// Includes user-defined LLM and TTS endpoints so the Settings UI can show
+/// per-endpoint key state.
 #[tauri::command]
 #[specta::specta]
 pub fn api_key_status(state: State<'_, AppState>) -> AppResult<Vec<ProviderKeyStatus>> {
-    let _ = state;
-    el_security::secrets::KNOWN_PROVIDERS
+    let mut ids: Vec<String> = el_security::secrets::KNOWN_PROVIDERS
         .iter()
+        .map(|provider| (*provider).to_string())
+        .collect();
+    if let Ok(config) = crate::commands::provider::load_config(&state) {
+        ids.extend(config.custom_providers.into_iter().map(|custom| custom.id));
+    }
+    ids.extend(crate::commands::audio::custom_provider_ids(&state).unwrap_or_default());
+    ids.sort();
+    ids.dedup();
+    ids.into_iter()
         .map(|provider| {
             Ok(ProviderKeyStatus {
-                provider: provider.to_string(),
-                configured: has_api_key(&state, provider)?,
+                configured: has_api_key(&state, &provider)?,
+                provider,
             })
         })
         .collect()
@@ -143,37 +154,45 @@ pub async fn api_key_test(
     model: Option<String>,
 ) -> AppResult<el_llm::TestOutcome> {
     el_security::secrets::check_provider(&provider)?;
-    let key = load_api_key(&state, &provider)?;
-    let conn = state.db.connect()?;
-    let settings_model = el_db::repo::cache::get_setting(&conn, "llm.model")?;
+    let config = crate::commands::provider::load_config(&state)?;
+    let (base_url, key) = crate::commands::provider::endpoint_for(&state, &config, &provider)?;
     let model = model
-        .or(settings_model)
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            config
+                .chain
+                .iter()
+                .find(|entry| entry.provider == provider)
+                .map(|entry| entry.model.clone())
+        })
+        .or_else(|| {
+            config
+                .provider_models
+                .get(&provider)
+                .and_then(|models| models.first().cloned())
+        })
+        .or_else(|| {
+            config
+                .custom_providers
+                .iter()
+                .find(|custom| custom.id == provider)
+                .and_then(|custom| custom.models.first().cloned())
+        })
         .unwrap_or_else(|| default_model_for(&provider).to_string());
     if model.trim().is_empty() {
         return Err(AppError::InvalidInput(
             "model must not be blank".to_string(),
         ));
     }
-    match provider.as_str() {
-        "anthropic" => {
-            el_llm::run_test_prompt(&state.db, &el_llm::Anthropic::new(&key)?, &model, None).await
-        }
-        "deepseek" => {
-            el_llm::run_test_prompt(&state.db, &el_llm::DeepSeek::new(&key)?, &model, None).await
-        }
-        _ => {
-            let base_url = el_db::repo::cache::get_setting(&conn, "llm.base_url")?
-                .filter(|url| !url.trim().is_empty())
-                .unwrap_or_else(|| "https://api.openai.com/v1".to_string());
-            el_llm::run_test_prompt(
-                &state.db,
-                &el_llm::OpenAiCompatible::new(&base_url, &key)?,
-                &model,
-                None,
-            )
-            .await
-        }
-    }
+    let target = el_llm::ProviderTarget {
+        provider: provider.clone(),
+        model: model.clone(),
+        base_url: Some(base_url),
+        api_key: key,
+    };
+    let client = el_llm::AnyProvider::from_targets(vec![target])?;
+    el_llm::run_test_prompt(&state.db, &client, &model, None).await
 }
 
 /// Summarizes token usage (rolling 24h / 30d) with limits and warnings.

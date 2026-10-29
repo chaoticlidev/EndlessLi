@@ -10,10 +10,33 @@ use el_core::{AppError, AppResult};
 pub const KEYRING_SERVICE: &str = "endlessli";
 
 /// Provider ids accepted by the key commands.
+///
+/// Built-in LLM ids mirror `el_llm::catalog`; search ids mirror the Python
+/// sidecar's provider registry. User-defined endpoints and TTS endpoints are
+/// accepted through the `custom.` and `tts.` prefixes validated below.
 pub const KNOWN_PROVIDERS: &[&str] = &[
+    // Built-in language models.
     "openai",
     "anthropic",
+    "google",
     "deepseek",
+    "groq",
+    "cerebras",
+    "openrouter",
+    "qwen",
+    "kimi",
+    "minimax",
+    "nvidia",
+    "fireworks",
+    "huggingface",
+    "meta",
+    "zai",
+    "ant-ling",
+    "opencode-zen",
+    "vercel",
+    "cloudflare",
+    "github-copilot",
+    // Search backends.
     "brave",
     "searxng",
     "tavily",
@@ -28,14 +51,47 @@ pub const KNOWN_PROVIDERS: &[&str] = &[
     "you",
 ];
 
+/// Prefix for user-defined OpenAI-compatible language-model endpoints.
+pub const CUSTOM_LLM_PREFIX: &str = "custom.";
+
+/// Prefix for user-defined OpenAI Speech-compatible endpoints.
+pub const CUSTOM_TTS_PREFIX: &str = "tts.";
+
+/// Validates the slug after a dynamic prefix.
+///
+/// Dynamic ids become keychain accounts, so they are restricted to lowercase
+/// letters, digits, and dashes. This keeps arbitrary or path-like strings from
+/// reaching the OS keychain. The rule is mirrored (not shared) from
+/// `el_llm::catalog` because `el-llm` depends on this crate.
+fn valid_slug(slug: &str) -> bool {
+    !slug.is_empty()
+        && slug.len() <= 40
+        && slug
+            .chars()
+            .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '-')
+        && !slug.starts_with('-')
+        && !slug.ends_with('-')
+}
+
+/// Whether a provider id is one of the built-in ids.
+pub fn is_builtin(provider: &str) -> bool {
+    KNOWN_PROVIDERS.contains(&provider)
+}
+
+/// Whether a provider id is a validated user-defined endpoint.
+pub fn is_dynamic(provider: &str) -> bool {
+    [CUSTOM_LLM_PREFIX, CUSTOM_TTS_PREFIX]
+        .iter()
+        .any(|prefix| provider.strip_prefix(prefix).is_some_and(valid_slug))
+}
+
 /// Rejects unknown provider ids before touching the keychain.
 pub fn check_provider(provider: &str) -> AppResult<()> {
-    if KNOWN_PROVIDERS.contains(&provider) {
+    if is_builtin(provider) || is_dynamic(provider) {
         Ok(())
     } else {
         Err(AppError::InvalidInput(format!(
-            "unknown provider {provider}; expected one of {}",
-            KNOWN_PROVIDERS.join(", ")
+            "unknown provider {provider:?}; expected a built-in id or custom.<slug>/tts.<slug>"
         )))
     }
 }
@@ -196,5 +252,40 @@ mod tests {
     fn unknown_provider_rejected() {
         assert!(set_api_key("skynet", "x").is_err());
         assert!(has_api_key("skynet").is_err());
+    }
+
+    #[test]
+    fn dynamic_ids_are_accepted() {
+        assert!(check_provider("custom.local-llama").is_ok());
+        assert!(check_provider("tts.my-endpoint").is_ok());
+        assert!(check_provider("custom.").is_err());
+        assert!(check_provider("custom.Bad").is_err());
+        assert!(check_provider("tts.a/b").is_err());
+        assert!(check_provider("custom.-lead").is_err());
+    }
+
+    #[test]
+    fn every_catalog_id_is_known() {
+        for id in [
+            "google",
+            "groq",
+            "cerebras",
+            "openrouter",
+            "qwen",
+            "kimi",
+            "minimax",
+            "nvidia",
+            "fireworks",
+            "huggingface",
+            "meta",
+            "zai",
+            "ant-ling",
+            "opencode-zen",
+            "vercel",
+            "cloudflare",
+            "github-copilot",
+        ] {
+            assert!(check_provider(id).is_ok(), "{id} must be accepted");
+        }
     }
 }

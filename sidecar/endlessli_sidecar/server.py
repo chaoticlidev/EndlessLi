@@ -20,6 +20,7 @@ from .extract import extract_pdf
 from .chunk import chunk_documents
 from .cluster import kmeans
 from .search import PROVIDERS, ProviderContext, search_with_fallback
+from . import tts as tts_engine
 
 #: Payload ceilings for the raw JSON-RPC surface (defense in depth; the Rust
 #: commands also validate before forwarding).
@@ -85,7 +86,7 @@ def method_search_query(params: Any) -> dict[str, Any]:
     max_results = params.get("max_results", 10)
     if not isinstance(max_results, int) or max_results < 1:
         raise ParamError("max_results must be a positive integer")
-    providers = params.get("providers", ["ddgs"])
+    providers = params.get("providers", params.get("provider_names", ["ddgs"]))
     if not isinstance(providers, list) or not providers or not all(isinstance(p, str) for p in providers):
         raise ParamError("providers must be a non-empty string list")
     safe_search = str(params.get("safe_search", "off") or "off")
@@ -158,18 +159,26 @@ def method_embed_model_info(params: Any) -> dict[str, Any]:
 
 
 def method_embed_texts(params: Any) -> dict[str, Any]:
-    """Embeds a batch of texts, returning one vector per input in order."""
+    """Embeds a batch, returning one vector per usable input in order.
+
+    ``null`` entries are accepted and filtered by the embedder, matching its
+    batch cleanup; any other non-string value is rejected so a type mistake
+    surfaces as INVALID_PARAMS instead of being embedded as ``repr(value)``.
+    The result's ``indices`` array maps each vector back to its input.
+    """
     if not isinstance(params, dict):
         raise ParamError("params must be an object")
     _require(params, "texts")
     texts = params["texts"]
-    if not isinstance(texts, list) or not texts or not all(isinstance(text, str) for text in texts):
-        raise ParamError("texts must be a non-empty string list")
+    if not isinstance(texts, list) or not texts:
+        raise ParamError("texts must be a non-empty list")
+    if not all(isinstance(text, str) or text is None for text in texts):
+        raise ParamError("texts must contain only strings or null")
     if len(texts) > MAX_TEXTS:
         raise ParamError(f"too many texts (max {MAX_TEXTS})")
-    if any(len(text) > MAX_EMBED_TEXT_CHARS for text in texts):
+    if any(len(text) > MAX_EMBED_TEXT_CHARS for text in texts if isinstance(text, str)):
         raise ParamError(f"a text exceeds the {MAX_EMBED_TEXT_CHARS}-character limit")
-    if sum(len(text) for text in texts) > MAX_EMBED_TOTAL_CHARS:
+    if sum(len(text) for text in texts if isinstance(text, str)) > MAX_EMBED_TOTAL_CHARS:
         raise ParamError(f"texts exceed the {MAX_EMBED_TOTAL_CHARS}-character limit")
     model = params.get("model")
     if model is not None and not isinstance(model, str):
@@ -249,6 +258,22 @@ def method_cluster_kmeans(params: Any) -> dict[str, Any]:
         raise SidecarError(f"clustering failed: {exc}") from exc
 
 
+def method_tts_synthesize(params: Any) -> dict[str, Any]:
+    """Synthesizes speech with a local or OpenAI-compatible engine."""
+    try:
+        return tts_engine.synthesize(params)
+    except ValueError as exc:
+        raise ParamError(str(exc)) from exc
+
+
+def method_tts_voices(params: Any) -> dict[str, Any]:
+    """Lists voices available to a local engine."""
+    try:
+        return tts_engine.list_voices(params)
+    except ValueError as exc:
+        raise ParamError(str(exc)) from exc
+
+
 METHODS: dict[str, Callable[[Any], Any]] = {
     "health.check": method_health_check,
     "search.providers": method_search_providers,
@@ -259,6 +284,8 @@ METHODS: dict[str, Callable[[Any], Any]] = {
     "pdf.extract": method_pdf_extract,
     "chunk.documents": method_chunk_documents,
     "cluster.kmeans": method_cluster_kmeans,
+    "tts.synthesize": method_tts_synthesize,
+    "tts.voices": method_tts_voices,
 }
 
 

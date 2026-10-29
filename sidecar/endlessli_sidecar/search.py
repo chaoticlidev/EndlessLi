@@ -744,6 +744,7 @@ PROVIDERS: dict[str, SearchProvider] = {
         DuckDuckGoLiteProvider(),
         DuckDuckGoHtmlProvider(),
         SearXNGProvider(),
+        BraveProvider(),
         FirecrawlProvider(),
         KeenableProvider(),
         ExaProvider(),

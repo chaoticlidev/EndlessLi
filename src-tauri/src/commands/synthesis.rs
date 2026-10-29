@@ -185,27 +185,7 @@ async fn run_synthesis(
     let docs_json: Vec<serde_json::Value> = input
         .documents
         .iter()
-        .map(|doc| {
-            // Strip mojibake
-            let mut clean_text = doc
-                .text
-                .replace("â€”", "-")
-                .replace("â€“", "-")
-                .replace("â€™", "'")
-                .replace("â€œ", "\"")
-                .replace("â€", "\"");
-
-            // Strip unpaired surrogates
-            clean_text = clean_text
-                .chars()
-                .filter(|c| {
-                    let val = *c as u32;
-                    !(0xD800..=0xDFFF).contains(&val)
-                })
-                .collect::<String>();
-
-            serde_json::json!({"doc_ref": doc.doc_ref, "text": clean_text})
-        })
+        .map(|doc| serde_json::json!({"doc_ref": doc.doc_ref, "text": doc.text}))
         .collect();
     let resp = state
         .sidecar
@@ -285,31 +265,17 @@ async fn run_synthesis(
                 ttl_secs: None,
             },
             || async {
-                // Clean the text right before sending it to Python
-                let mut cleaned_text = text
-                    .replace("â€”", "-")
-                    .replace("â€“", "-")
-                    .replace("â€™", "'")
-                    .replace("â€œ", "\"")
-                    .replace("â€", "\"");
-
-                // Strip any remaining non-printable or broken characters
-                // This keeps normal letters, numbers, punctuation, and standard spaces
-                cleaned_text = cleaned_text
-                    .chars()
-                    .filter(|c| c.is_ascii() || c.is_alphabetic() || c.is_whitespace())
-                    .collect::<String>();
-
-                eprintln!("DEBUG: Sending text to sidecar: {:?}", cleaned_text);
-
+                // The chunker already trims and drops blank chunks, and the
+                // sidecar sanitizes each text before tokenizing it. Filtering
+                // characters here used to turn non-Latin chunks into empty
+                // strings, which the tokenizer rejects with
+                // `TextEncodeInputError`.
                 let result = sidecar
                     .call(
                         "embed.texts",
-                        serde_json::json!({"texts": [cleaned_text], "model": embedder_model}), // Use cleaned_text here
+                        serde_json::json!({"texts": [text], "model": embedder_model}),
                     )
                     .await?;
-
-                eprintln!("DEBUG: Sidecar result: {:?}", result);
                 Ok(el_cache::CacheValue {
                     bytes: serde_json::to_vec(&result)
                         .map_err(|err| AppError::Internal(err.to_string()))?,

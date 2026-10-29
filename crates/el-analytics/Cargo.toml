@@ -11,11 +11,13 @@ serde = { workspace = true }
 tracing = { workspace = true }
 
 # Enabled with `--features duckdb` (src-tauri turns it on by default).
-# `bundled` compiles DuckDB from source so no system library is required.
+# `bundled` is deliberately NOT enabled: it compiles DuckDB from C++ source and
+# bypasses the build script's pre-built library path. With `DUCKDB_DOWNLOAD_LIB=1`
+# (set in .cargo/config.toml) libduckdb-sys downloads the official dynamic
+# library instead, or `DUCKDB_LIB_DIR` can point at a system installation.
 [dependencies.duckdb]
 version = "1"
 optional = true
-features = ["bundled"]
 
 [features]
 default = []

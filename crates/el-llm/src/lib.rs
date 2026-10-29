@@ -1,19 +1,26 @@
-//! `el-llm`: provider trait, token counting, and budget enforcement.
+//! `el-llm`: provider catalog, fallback chain, token counting, and budgets.
 //!
 //! Every LLM call (research synthesis, skills, memory suggestions, and the
-//! Settings self-test) flows through [`run_test_prompt`]-style logic: count
-//! first, check budgets, send, sanitize, log usage. Providers implement
+//! Settings self-test) flows through [`run_prompt`]-style logic: count first,
+//! check budgets, send, sanitize, log usage. Providers implement
 //! [`provider::LlmProvider`]; tests use stub providers, never the network.
+//!
+//! [`catalog`] is the single source of truth for provider ids, endpoints, and
+//! suggested models. `AnyProvider` walks an ordered fallback chain so a retired
+//! model or a rate limit does not break the app.
 
 pub mod budgets;
+pub mod catalog;
 pub mod provider;
 pub mod tokens;
 
 pub use budgets::{check_budget, BudgetCheck};
+pub use catalog::{ProviderDescriptor, WireFormat};
 pub use el_core::{AppError, AppResult};
 pub use provider::{
-    Anthropic, AnyProvider, ChatMessage, ChatRequest, ChatResponse, ChatUsage, DeepSeek,
-    LlmProvider, OpenAiCompatible, ANTHROPIC_VERSION, DEEPSEEK_BASE_URL, OPENAI_BASE_URL,
+    Anthropic, AnyProvider, ChatMessage, ChatRequest, ChatResponse, ChatUsage, Copilot, DeepSeek,
+    LlmProvider, OpenAiCompatible, ProviderTarget, ANTHROPIC_BASE_URL, ANTHROPIC_VERSION,
+    DEEPSEEK_BASE_URL, OPENAI_BASE_URL,
 };
 pub use tokens::{estimate_messages, estimate_text, TokenEstimate};
 
@@ -26,6 +33,10 @@ pub struct TestOutcome {
     #[specta(type = specta_typescript::Number)]
     pub tokens_out: i64,
     pub estimated: bool,
+    /// Provider that answered (may differ from the one tested after fallback).
+    pub provider: String,
+    /// Model that answered.
+    pub model: String,
     pub budget_warning: Option<String>,
 }
 
@@ -34,6 +45,10 @@ pub struct TestOutcome {
 pub struct PromptOutcome {
     pub text: String,
     pub usage: ChatUsage,
+    /// Provider that actually served the call.
+    pub provider: String,
+    /// Model that actually served the call.
+    pub model: String,
     pub budget_warning: Option<String>,
 }
 
@@ -74,12 +89,14 @@ pub async fn run_prompt<P: LlmProvider>(
     let response = provider.complete(request).await?;
     let text = el_security::sanitize_llm_output(&response.text);
     {
+        // Log the provider and model that answered, not the configured first
+        // choice: a fallback target may have served the call.
         let conn = db.connect()?;
         el_db::repo::cache::log_usage(
             &conn,
             session_id,
-            provider.name(),
-            model,
+            &response.provider,
+            &response.model,
             response.usage.tokens_in,
             response.usage.tokens_out,
         )?;
@@ -87,6 +104,8 @@ pub async fn run_prompt<P: LlmProvider>(
     Ok(PromptOutcome {
         text,
         usage: response.usage,
+        provider: response.provider,
+        model: response.model,
         budget_warning: warning,
     })
 }
@@ -115,6 +134,8 @@ pub async fn run_test_prompt<P: LlmProvider>(
         tokens_in: outcome.usage.tokens_in,
         tokens_out: outcome.usage.tokens_out,
         estimated: outcome.usage.estimated,
+        provider: outcome.provider,
+        model: outcome.model,
         budget_warning: outcome.budget_warning,
     })
 }
@@ -127,7 +148,7 @@ mod tests {
     struct StubProvider;
 
     impl LlmProvider for StubProvider {
-        fn name(&self) -> &'static str {
+        fn name(&self) -> &str {
             "stub"
         }
 
@@ -153,6 +174,8 @@ mod tests {
             .expect("run");
         assert_eq!(outcome.text, "OK");
         assert_eq!((outcome.tokens_in, outcome.tokens_out), (12, 2));
+        assert_eq!(outcome.provider, "stub");
+        assert_eq!(outcome.model, "stub-model");
         let conn = db.connect().expect("connect");
         let (logged_in, logged_out) = el_db::repo::cache::sum_since(&conn, 0).expect("sum");
         assert_eq!((logged_in, logged_out), (12, 2));

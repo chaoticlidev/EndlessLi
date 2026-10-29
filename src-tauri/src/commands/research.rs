@@ -56,6 +56,54 @@ pub struct ResearchView {
     pub results: Vec<ResearchResult>,
 }
 
+/// Every credential the sidecar search providers need.
+///
+/// Mirrors `endlessli_sidecar.search.ProviderContext`. Building the JSON-RPC
+/// payload from one struct (instead of eleven inline `unwrap_or("")` calls)
+/// keeps the Rust and Python field sets from drifting when a provider is added.
+#[derive(Debug, Clone)]
+struct ProviderContext<'a> {
+    searxng_url: &'a str,
+    brave_key: &'a str,
+    tavily_key: &'a str,
+    exa_key: &'a str,
+    keenable_key: &'a str,
+    firecrawl_key: &'a str,
+    bing_key: &'a str,
+    parallel_key: &'a str,
+    anysearch_key: &'a str,
+    perplexity_key: &'a str,
+    serpbase_key: &'a str,
+    you_key: &'a str,
+    safe_search: &'a str,
+}
+
+impl<'a> ProviderContext<'a> {
+    /// Builds the `search.query` payload. `provider_names` is included as an
+    /// alias of `providers` because older sidecar builds read that spelling.
+    fn payload(&self, query: &str, max_results: u32, providers: &[String]) -> serde_json::Value {
+        serde_json::json!({
+            "query": query,
+            "max_results": max_results,
+            "providers": providers,
+            "provider_names": providers,
+            "searxng_url": self.searxng_url,
+            "brave_key": self.brave_key,
+            "tavily_key": self.tavily_key,
+            "exa_key": self.exa_key,
+            "keenable_key": self.keenable_key,
+            "firecrawl_key": self.firecrawl_key,
+            "bing_key": self.bing_key,
+            "parallel_key": self.parallel_key,
+            "anysearch_key": self.anysearch_key,
+            "perplexity_key": self.perplexity_key,
+            "serpbase_key": self.serpbase_key,
+            "you_key": self.you_key,
+            "safe_search": self.safe_search,
+        })
+    }
+}
+
 /// Translates the tool trait into cached sidecar RPC calls.
 #[derive(Debug, Clone)]
 struct SidecarTools {
@@ -87,6 +135,23 @@ impl ResearchTools for SidecarTools {
         safe_search: &str,
     ) -> AppResult<(Vec<SearchHit>, String)> {
         let model = providers.join("+");
+        let context = ProviderContext {
+            searxng_url: searxng_url.unwrap_or(""),
+            brave_key: brave_key.unwrap_or(""),
+            tavily_key: tavily_key.unwrap_or(""),
+            exa_key: exa_key.unwrap_or(""),
+            keenable_key: keenable_key.unwrap_or(""),
+            firecrawl_key: firecrawl_key.unwrap_or(""),
+            bing_key: bing_key.unwrap_or(""),
+            parallel_key: parallel_key.unwrap_or(""),
+            anysearch_key: anysearch_key.unwrap_or(""),
+            perplexity_key: perplexity_key.unwrap_or(""),
+            serpbase_key: serpbase_key.unwrap_or(""),
+            you_key: you_key.unwrap_or(""),
+            safe_search,
+        };
+        let payload = context.payload(query, max_results, providers);
+        let you_available = !context.you_key.is_empty();
         let (bytes, _) = el_cache::get_or_compute(
             &self.db,
             el_cache::CacheInput {
@@ -101,36 +166,19 @@ impl ResearchTools for SidecarTools {
                     .acquire()
                     .await
                     .map_err(|_| AppError::Internal("sidecar semaphore closed".to_string()))?;
-                let sidecar_result = self.sidecar.call(
-                    "search.query",
-                    serde_json::json!({
-                        "query": query,
-                        "max_results": max_results,
-                        "providers": providers,
-                        "searxng_url": searxng_url.unwrap_or(""),
-                        "brave_key": brave_key.unwrap_or(""),
-                        "tavily_key": tavily_key.unwrap_or(""),
-                        "exa_key": exa_key.unwrap_or(""),
-                        "keenable_key": keenable_key.unwrap_or(""),
-                        "firecrawl_key": firecrawl_key.unwrap_or(""),
-                        "bing_key": bing_key.unwrap_or(""),
-                        "parallel_key": parallel_key.unwrap_or(""),
-                        "anysearch_key": anysearch_key.unwrap_or(""),
-                        "perplexity_key": perplexity_key.unwrap_or(""),
-                        "serpbase_key": serpbase_key.unwrap_or(""),
-                        "you_key": you_key.unwrap_or(""),
-                        "safe_search": safe_search,
-                    }),
-                ).await;
+                let sidecar_result = self
+                    .sidecar
+                    .call("search.query", payload.clone())
+                    .await;
                 let response = match sidecar_result {
                     Ok(resp) => resp,
                     Err(err) => {
                         tracing::warn!(error = %err, "sidecar search failed; trying You.com MCP fallback");
-                        if you_key.is_some() {
+                        if you_available {
                             let mcp_hits = crate::commands::you_mcp::search(query, max_results).await.unwrap_or_default();
                             if !mcp_hits.is_empty() {
                                 return Ok(el_cache::CacheValue {
-                                    bytes: serde_json::json!({"provider": "you", "results": []})
+                                    bytes: serde_json::json!({"provider": "you", "results": mcp_hits})
                                         .to_string()
                                         .into_bytes(),
                                     source_type: "you".to_string(),
@@ -173,7 +221,7 @@ impl ResearchTools for SidecarTools {
                 // If the sidecar returned no hits but You.com MCP is
                 // available, try that as a last-resort fallback before
                 // giving up on the whole chain.
-                if hits.is_empty() && you_key.is_some() {
+                if hits.is_empty() && you_available {
                     let mcp_hits = crate::commands::you_mcp::search(query, max_results).await.unwrap_or_default();
                     if !mcp_hits.is_empty() {
                         hits = mcp_hits;

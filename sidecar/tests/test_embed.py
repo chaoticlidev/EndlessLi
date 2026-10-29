@@ -88,3 +88,69 @@ def test_embed_texts_truncates_long_input(monkeypatch):
     long_text = "a" * (embed.MAX_TEXT_CHARS + 50)
     dispatch({"jsonrpc": "2.0", "id": 7, "method": "embed.texts", "params": {"texts": [long_text]}})
     assert len(seen["texts"][0]) == embed.MAX_TEXT_CHARS
+
+
+def test_embed_texts_filters_blank_and_null_before_tokenizer(monkeypatch):
+    """The tokenizer rejects None and empty input, so the batch must arrive clean."""
+    seen = {}
+
+    class StubEmbedder:
+        def embed(self, texts):
+            seen["texts"] = list(texts)
+            return [[float(len(text))] for text in texts]
+
+    monkeypatch.setattr(embed, "_fastembed_available", lambda: True)
+    monkeypatch.setattr(embed, "_load", lambda model: StubEmbedder())
+
+    response = dispatch(
+        {
+            "jsonrpc": "2.0",
+            "id": 8,
+            "method": "embed.texts",
+            "params": {"texts": [None, "", "   ", "real text", "\x00\x01"]},
+        }
+    )
+    result = response["result"]
+    assert seen["texts"] == ["real text"]
+    assert result["indices"] == [3]
+    assert result["embeddings"] == [[9.0]]
+
+
+def test_embed_texts_returns_empty_batch_without_loading_model(monkeypatch):
+    def fail_load(model):
+        raise AssertionError("the embedder must not load for an all-blank batch")
+
+    monkeypatch.setattr(embed, "_fastembed_available", lambda: True)
+    monkeypatch.setattr(embed, "_load", fail_load)
+
+    response = dispatch(
+        {"jsonrpc": "2.0", "id": 9, "method": "embed.texts", "params": {"texts": [None, ""]}}
+    )
+    result = response["result"]
+    assert result["embeddings"] == []
+    assert result["indices"] == []
+
+
+def test_embed_texts_strips_control_characters_and_surrogates(monkeypatch):
+    seen = {}
+
+    class StubEmbedder:
+        def embed(self, texts):
+            seen["texts"] = list(texts)
+            return [[0.0] for _ in texts]
+
+    monkeypatch.setattr(embed, "_fastembed_available", lambda: True)
+    monkeypatch.setattr(embed, "_load", lambda model: StubEmbedder())
+
+    response = dispatch(
+        {"jsonrpc": "2.0", "id": 10, "method": "embed.texts", "params": {"texts": ["a\x00b", "c\ud800d"]}}
+    )
+    assert response["result"]["indices"] == [0, 1]
+    assert seen["texts"] == ["ab", "cd"]
+
+
+def test_embed_texts_rejects_non_string_entries():
+    response = dispatch(
+        {"jsonrpc": "2.0", "id": 11, "method": "embed.texts", "params": {"texts": [42]}}
+    )
+    assert response["error"]["code"] == server.INVALID_PARAMS

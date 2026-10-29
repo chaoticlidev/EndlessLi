@@ -7,6 +7,7 @@ import {
 import { commands } from "./bindings";
 import type {
   AppError,
+  LlmConfig,
   NewLibraryItem,
   NewNote,
   NoteScope,
@@ -14,6 +15,7 @@ import type {
   Script,
   Skill,
   SynthesisStartInput,
+  TtsConfig,
   UpdateLibraryItem,
 } from "./bindings";
 
@@ -473,6 +475,93 @@ export function useTokenSummary() {
   return useQuery({
     queryKey: ["token-summary"],
     queryFn: () => call(() => commands.tokenUsageSummary()),
+  });
+}
+
+/** Built-in provider catalog: ids, labels, endpoints, and suggested models. */
+export function useLlmCatalog() {
+  return useQuery({
+    queryKey: ["llm-catalog"],
+    queryFn: () => call(() => commands.llmCatalog()),
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+}
+
+/** Active fallback chain, custom endpoints, model lists, and URL overrides. */
+export function useLlmConfig() {
+  return useQuery({
+    queryKey: ["llm-config"],
+    queryFn: () => call(() => commands.llmConfigGet()),
+  });
+}
+
+export function useSaveLlmConfig() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (config: LlmConfig) =>
+      call(() => commands.llmConfigSave(config)),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["llm-config"] });
+      void client.invalidateQueries({ queryKey: ["key-status"] });
+      void client.invalidateQueries({ queryKey: ["token-summary"] });
+    },
+  });
+}
+
+/** Fetches a provider's live `/models` list; the caller merges and saves it. */
+export function useSyncModels() {
+  return useMutation({
+    mutationFn: (provider: string) =>
+      call(() => commands.llmModelsSync(provider)),
+  });
+}
+
+export function useTtsConfig() {
+  return useQuery({
+    queryKey: ["tts-config"],
+    queryFn: () => call(() => commands.ttsConfigGet()),
+  });
+}
+
+export function useSaveTtsConfig() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (config: TtsConfig) =>
+      call(() => commands.ttsConfigSave(config)),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["tts-config"] });
+      void client.invalidateQueries({ queryKey: ["tts-voices"] });
+      void client.invalidateQueries({ queryKey: ["key-status"] });
+    },
+  });
+}
+
+/** Voices for the active engine; local paths are part of the cache key. */
+export function useTtsVoices(
+  engine: string,
+  providerId: string,
+  piperVoicesDir: string,
+  kokoroVoicesPath: string,
+) {
+  return useQuery({
+    queryKey: [
+      "tts-voices",
+      engine,
+      providerId,
+      piperVoicesDir,
+      kokoroVoicesPath,
+    ],
+    queryFn: () =>
+      call(() =>
+        commands.ttsVoices(
+          engine,
+          providerId || null,
+          piperVoicesDir || null,
+          kokoroVoicesPath || null,
+        ),
+      ),
+    staleTime: 30_000,
+    retry: 0,
   });
 }
 
