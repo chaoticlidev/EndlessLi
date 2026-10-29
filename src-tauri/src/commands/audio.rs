@@ -290,7 +290,10 @@ fn validate(config: &TtsConfig) -> AppResult<()> {
     }
     if config.engine == "openai"
         && !config.custom_provider_id.is_empty()
-        && !config.custom_providers.iter().any(|custom| custom.id == config.custom_provider_id)
+        && !config
+            .custom_providers
+            .iter()
+            .any(|custom| custom.id == config.custom_provider_id)
     {
         return Err(AppError::InvalidInput(format!(
             "selected TTS endpoint {} is not configured",
